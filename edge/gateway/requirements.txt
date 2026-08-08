@@ -1,0 +1,4 @@
+# Edge gatekeeper dependencies. Deliberately tiny: this process sits in front
+# of the hardware, so every dependency is attack surface.
+aiohttp>=3.9
+PyJWT[crypto]>=2.8

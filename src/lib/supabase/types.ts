@@ -125,6 +125,7 @@ export interface Database {
           name: string;
           emoji: string;
           in_development: boolean;
+          in_maintenance: boolean;
           description: string | null;
           lab_url: string | null;
           control_url: string | null;
@@ -139,6 +140,7 @@ export interface Database {
           name: string;
           emoji?: string;
           in_development?: boolean;
+          in_maintenance?: boolean;
           description?: string | null;
           lab_url?: string | null;
           control_url?: string | null;
@@ -153,6 +155,7 @@ export interface Database {
           name?: string;
           emoji?: string;
           in_development?: boolean;
+          in_maintenance?: boolean;
           description?: string | null;
           lab_url?: string | null;
           control_url?: string | null;
@@ -166,6 +169,37 @@ export interface Database {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lab_settings: {
+        Row: {
+          lab_id: string;
+          key: string;
+          value: unknown;
+          updated_by: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          lab_id: string;
+          key: string;
+          value?: unknown;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          /** Structural: no update grant on lab_id / key — replace the row. */
+          value?: unknown;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lab_settings_lab_id_fkey";
+            columns: ["lab_id"];
+            isOneToOne: false;
+            referencedRelation: "remote_labs";
             referencedColumns: ["id"];
           },
         ];
@@ -308,6 +342,8 @@ export interface Database {
         Args: { p_project_id: string; p_user_id: string | null };
         Returns: boolean;
       };
+      is_lab_member: { Args: { lab: string }; Returns: boolean };
+      is_lab_operator: { Args: { lab: string }; Returns: boolean };
       is_project_admin: { Args: { pid: string }; Returns: boolean };
       is_project_member: { Args: { pid: string }; Returns: boolean };
       lab_heartbeat: {
