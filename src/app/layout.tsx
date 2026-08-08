@@ -33,7 +33,14 @@ export const metadata: Metadata = {
     "Laboratorio remoto del semillero PRIMBIO — teleoperación de hardware en tiempo real.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Typed explicitly rather than with Next's generated `LayoutProps`, which only
+// exists after a build has written .next/types — a clean checkout (CI) would
+// not typecheck.
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="es"
