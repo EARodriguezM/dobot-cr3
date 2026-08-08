@@ -263,10 +263,16 @@ class MemoryStore implements ControlStore {
 class RedisStore implements ControlStore {
   readonly backend = "redis" as const;
 
-  constructor(
-    private client: RedisClientType,
-    private subClient: RedisClientType,
-  ) {}
+  private client: RedisClientType;
+  private subClient: RedisClientType;
+
+  // Written out rather than as constructor parameter properties so this module
+  // can be loaded directly by Node's type-stripping loader, which the
+  // control-lease test script relies on.
+  constructor(client: RedisClientType, subClient: RedisClientType) {
+    this.client = client;
+    this.subClient = subClient;
+  }
 
   private key(id: string): string {
     return `lab:${id}:control`;

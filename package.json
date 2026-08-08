@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "heartbeat": "node scripts/heartbeat.mjs"
+    "heartbeat": "node scripts/heartbeat.mjs",
+    "test:lease": "node --experimental-strip-types scripts/test-control-lease.mjs",
+    "test:gateway": "python3 -m pytest edge/gateway/tests edge/ros2/dobot_cr3_weblab/test -q"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
