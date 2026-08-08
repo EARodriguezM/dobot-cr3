@@ -45,7 +45,8 @@ export interface Database {
           slug: string;
           name: string;
           description: string | null;
-          owner_id: string;
+          /** NULL = unclaimed; assigned once the owner has a profile (0007). */
+          owner_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -54,7 +55,7 @@ export interface Database {
           slug: string;
           name: string;
           description?: string | null;
-          owner_id: string;
+          owner_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -63,7 +64,7 @@ export interface Database {
           slug?: string;
           name?: string;
           description?: string | null;
-          owner_id?: string;
+          owner_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -122,6 +123,8 @@ export interface Database {
           project_id: string;
           slug: string;
           name: string;
+          emoji: string;
+          in_development: boolean;
           description: string | null;
           lab_url: string | null;
           control_url: string | null;
@@ -134,6 +137,8 @@ export interface Database {
           project_id: string;
           slug: string;
           name: string;
+          emoji?: string;
+          in_development?: boolean;
           description?: string | null;
           lab_url?: string | null;
           control_url?: string | null;
@@ -146,6 +151,8 @@ export interface Database {
           project_id?: string;
           slug?: string;
           name?: string;
+          emoji?: string;
+          in_development?: boolean;
           description?: string | null;
           lab_url?: string | null;
           control_url?: string | null;
@@ -163,9 +170,144 @@ export interface Database {
           },
         ];
       };
+      research_lines: {
+        Row: {
+          id: string;
+          slug: string;
+          number: string;
+          icon: string;
+          title: string;
+          description: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          number?: string;
+          icon?: string;
+          title: string;
+          description?: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          number?: string;
+          icon?: string;
+          title?: string;
+          description?: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      members: {
+        Row: {
+          id: string;
+          slug: string;
+          initials: string;
+          role_label: string;
+          full_name: string;
+          focus: string;
+          project_slug: string | null;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          initials?: string;
+          role_label?: string;
+          full_name: string;
+          focus?: string;
+          project_slug?: string | null;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          initials?: string;
+          role_label?: string;
+          full_name?: string;
+          focus?: string;
+          project_slug?: string | null;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      research_path: {
+        Row: {
+          id: string;
+          year: string;
+          title: string;
+          description: string;
+          milestone_kind: string;
+          active: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          year?: string;
+          title: string;
+          description?: string;
+          milestone_kind?: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          year?: string;
+          title?: string;
+          description?: string;
+          milestone_kind?: string;
+          active?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      content_editors: {
+        Row: { user_id: string; added_at: string };
+        Insert: { user_id: string; added_at?: string };
+        Update: { user_id?: string; added_at?: string };
+        Relationships: [];
+      };
+      platform_admins: {
+        Row: { user_id: string; added_at: string };
+        Insert: { user_id: string; added_at?: string };
+        Update: { user_id?: string; added_at?: string };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
+      is_content_editor: { Args: Record<string, never>; Returns: boolean };
+      is_platform_admin: { Args: Record<string, never>; Returns: boolean };
+      set_project_owner: {
+        Args: { p_project_id: string; p_user_id: string | null };
+        Returns: boolean;
+      };
       is_project_admin: { Args: { pid: string }; Returns: boolean };
       is_project_member: { Args: { pid: string }; Returns: boolean };
       lab_heartbeat: {
