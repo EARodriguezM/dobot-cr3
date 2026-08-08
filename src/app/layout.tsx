@@ -26,11 +26,11 @@ const lora = Lora({
   display: "swap",
 });
 
-// Template metadata — each lab replaces the title/description when forking.
 export const metadata: Metadata = {
-  title: "Laboratorio Remoto — PRIMBIO",
+  title: "Dobot CR3 — Laboratorio Remoto PRIMBIO",
   description:
-    "Laboratorio remoto del semillero PRIMBIO — teleoperación de hardware en tiempo real.",
+    "Teleoperación remota del brazo colaborativo Dobot CR3 del semillero PRIMBIO: " +
+    "un operador activo, múltiples observadores en vivo.",
 };
 
 // Typed explicitly rather than with Next's generated `LayoutProps`, which only

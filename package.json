@@ -1,10 +1,13 @@
 {
-  "name": "lab-template",
+  "name": "dobot-cr3-lab",
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-robot-assets.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-robot-assets.mjs",
     "build": "next build",
+    "sync-robot-assets": "node scripts/sync-robot-assets.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -13,16 +16,20 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.2",
+    "jose": "^6.2.8",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "redis": "^6.2.0"
+    "redis": "^6.2.0",
+    "three": "^0.185.1",
+    "urdf-loader": "^0.13.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.185.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",

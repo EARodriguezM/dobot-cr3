@@ -40,3 +40,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Robot description generated from the ROS 2 submodule by
+# scripts/sync-robot-assets.mjs (runs on predev/prebuild).
+/public/robot/
+
+# Python tooling for the edge services
+__pycache__/
+*.pyc
+.venv/

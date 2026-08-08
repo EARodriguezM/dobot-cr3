@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { ProjectRole } from "@/lib/supabase/types";
 
-// Which remote_labs row this deployment is. Each lab fork sets its own slug.
+// Which remote_labs row this deployment is. Registered in the platform
+// catalogue as "dobot-cr3" (project "Dobot CR3").
 export function getLabSlug(): string {
-  return process.env.NEXT_PUBLIC_LAB_SLUG || "demo-lab";
+  return process.env.NEXT_PUBLIC_LAB_SLUG || "dobot-cr3";
 }
 
 // Backend origin (Cloudflare Tunnel to the lab computer). Empty = demo mode:

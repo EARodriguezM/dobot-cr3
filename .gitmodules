@@ -1,0 +1,3 @@
+[submodule "ros2_interfaces/dobot_cr3_control"]
+	path = ros2_interfaces/dobot_cr3_control
+	url = https://github.com/EARodriguezM/dobot_cr3_control.git
