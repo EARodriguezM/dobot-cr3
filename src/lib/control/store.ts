@@ -356,7 +356,6 @@ class RedisStore implements ControlStore {
 // ── Singleton ───────────────────────────────────────────────────────────────
 
 declare global {
-  // eslint-disable-next-line no-var
   var __controlStore: Promise<ControlStore> | undefined;
 }
 

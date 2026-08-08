@@ -1,19 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "primbio-theme";
 
 // The root layout runs an inline script that applies the stored theme before
 // paint; this button only flips and persists it.
-export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+// The inline script in the root layout has already stamped data-theme before
+// hydration, so the DOM is the source of truth. Reading it through
+// useSyncExternalStore keeps the server render ("light", matching the default)
+// and the client render consistent without an effect that re-renders on mount.
+function subscribe() {
+  return () => {};
+}
 
-  useEffect(() => {
-    setTheme(
-      document.documentElement.dataset.theme === "dark" ? "dark" : "light",
-    );
-  }, []);
+function readTheme(): "light" | "dark" {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+export function ThemeToggle() {
+  const domTheme = useSyncExternalStore(subscribe, readTheme, () => "light" as const);
+  const [override, setOverride] = useState<"light" | "dark" | null>(null);
+  const theme = override ?? domTheme;
 
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
@@ -23,7 +31,7 @@ export function ThemeToggle() {
     } catch {
       // Storage unavailable (private mode): the toggle still works for the tab.
     }
-    setTheme(next);
+    setOverride(next);
   }
 
   return (
