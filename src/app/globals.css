@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   PRIMBIO design system — shared tokens (PLATFORM-GUIDE §5)
+   Warm paper/ink palette with a terracotta accent. Light is the default;
+   dark mode is driven by [data-theme="dark"] on <html>.
+   ========================================================================== */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Expose palette + fonts as Tailwind utilities (bg-bg, text-ink, font-head…).
+   `inline` keeps utilities resolving to the live var(--…) values, which flip
+   with [data-theme]. */
+@theme inline {
+  --font-head: var(--font-syne), sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+  --font-body: var(--font-lora), Georgia, serif;
+
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-accent: var(--accent);
+  --color-ok: var(--ok);
+  --color-blue: var(--blue);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-ink-surface: var(--ink-surface);
+  --color-ink-on: var(--ink-on);
+}
+
+/* ── Palette (light default) ─────────────────────────────────────────────── */
+:root {
+  --bg:      #ffffff; /* page                */
+  --bg2:     #f5f5f3; /* recessed sections   */
+  --card:    #ffffff; /* panels / cards      */
+  --line:    #e0dbd2; /* hairline borders    */
+  --ink:     #1a1714; /* primary text        */
+  --ink2:    #3d3830; /* secondary text      */
+  --ink3:    #7a7268; /* dim text            */
+  --accent:  #c8420a; /* terracotta (brand)  */
+  --ok:      #2a6b4a; /* green / online      */
+  --blue:    #1b4f8a; /* slate blue          */
+  --warn:    #c8820a; /* maintenance         */
+  --danger:  #c0341d; /* errors / e-stop     */
+
+  /* Inverted "ink bands" (hero panel, rail, footer) — dark in BOTH themes.
+     --ink stays the inverting text color; bands use these instead. */
+  --ink-surface: #1a1714;
+  --ink-on:      #f0ece4;
+}
+
+[data-theme="dark"] {
+  --bg:      #0f0e0c;
+  --bg2:     #17150f;
+  --card:    #1c1a16;
+  --line:    #2a2520;
+  --ink:     #f0ece4;
+  --ink2:    #c8c0b0;
+  --ink3:    #7a7268;
+  --accent:  #e0571c;
+  --ok:      #3f9468;
+  --blue:    #4a86c5;
+  --warn:    #e0a020;
+  --danger:  #e0573f;
+
+  --ink-surface: #070605;
+  --ink-on:      #f0ece4;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.7;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+/* ── Accessibility: visible focus + reduced motion ───────────────────────── */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
