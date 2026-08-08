@@ -83,6 +83,19 @@ function tryAcquire(s: StoreState, user: ControlUser, now: number): TakeResult {
   return { granted: false, position: position(s, user.id) };
 }
 
+// Admin override. The reference implementation called it "force control": an
+// arm left enabled by someone who walked away blocks the lab until their lease
+// expires, and a project admin needs a way through that is not "wait". The
+// displaced holder finds out the same way everyone else does — the state
+// stream — and their next heartbeat returns no lease token, so their commands
+// stop being authorized within one heartbeat interval.
+function forceAcquire(s: StoreState, user: ControlUser, now: number): TakeResult {
+  prune(s, now);
+  s.holder = { user, expires: now + LEASE_TTL_MS };
+  s.queue.delete(user.id);
+  return { granted: true, position: 0 };
+}
+
 function position(s: StoreState, userId: string): number {
   const q = orderedQueue(s);
   const idx = q.findIndex((e) => e.user.id === userId);
@@ -167,6 +180,8 @@ function fromWire(w: WireState | null): StoreState {
 export interface ControlStore {
   readonly backend: "redis" | "memory";
   take(labId: string, user: ControlUser): Promise<TakeResult>;
+  /** Seize the lease regardless of who holds it. Admins only — see route. */
+  force(labId: string, user: ControlUser): Promise<TakeResult>;
   heartbeat(labId: string, user: ControlUser): Promise<TakeResult>;
   release(labId: string, userId: string): Promise<void>;
   estop(labId: string, by: ControlUser): Promise<void>;
@@ -198,6 +213,11 @@ class MemoryStore implements ControlStore {
 
   async take(id: string, user: ControlUser): Promise<TakeResult> {
     const r = tryAcquire(this.lab(id), user, Date.now());
+    this.emit(id);
+    return r;
+  }
+  async force(id: string, user: ControlUser): Promise<TakeResult> {
+    const r = forceAcquire(this.lab(id), user, Date.now());
     this.emit(id);
     return r;
   }
@@ -286,6 +306,9 @@ class RedisStore implements ControlStore {
 
   take(id: string, user: ControlUser): Promise<TakeResult> {
     return this.mutate(id, (s, now) => tryAcquire(s, user, now));
+  }
+  force(id: string, user: ControlUser): Promise<TakeResult> {
+    return this.mutate(id, (s, now) => forceAcquire(s, user, now));
   }
   heartbeat(id: string, user: ControlUser): Promise<TakeResult> {
     return this.mutate(id, (s, now) => heartbeat(s, user, now));

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getControlStore } from "@/lib/control/store";
 import { requireControlUser, requireOperate } from "@/lib/control/auth";
 import { getLabSlug } from "@/lib/lab";
+import { mintLeaseToken } from "@/lib/control/token";
 
 // Request the control lease. Grants immediately when free (and unqueued-for),
 // otherwise joins the wait queue; waiting clients are promoted automatically
@@ -14,5 +15,8 @@ export async function POST() {
 
   const store = await getControlStore();
   const result = await store.take(getLabSlug(), auth.user);
-  return NextResponse.json(result);
+  // The token travels with the grant: the client presents it to the edge
+  // gatekeeper, which has no other way to know who holds the lease.
+  const leaseToken = result.granted ? await mintLeaseToken(auth.user) : null;
+  return NextResponse.json({ ...result, leaseToken });
 }

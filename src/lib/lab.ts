@@ -15,6 +15,20 @@ export function getControlUrl(): string | null {
   return process.env.NEXT_PUBLIC_CONTROL_URL || null;
 }
 
+// The caller's raw Supabase access token, for the one case where this app
+// speaks to the edge on the user's behalf (the server-side e-stop). The
+// gatekeeper verifies it and re-checks the role itself, so this app is never
+// trusted as an authority — it only passes the user's own credential along.
+export async function getAccessToken(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = await createClient();
+  if (!supabase) return null;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
 export interface LabContext {
   configured: boolean;
   user: { id: string; email: string; name: string } | null;
