@@ -1,0 +1,6 @@
+# Global speed factor, 1-100. Clamped by the node: a web client must not be
+# able to talk the driver into an out-of-range value.
+int32 ratio
+---
+bool ok
+string message

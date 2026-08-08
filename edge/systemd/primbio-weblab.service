@@ -1,0 +1,20 @@
+[Unit]
+Description=Dobot CR3 weblab ROS 2 node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=primbio
+
+# Sourcing the workspace inside the unit keeps the ROS environment out of the
+# user's login shell, which a systemd service does not have.
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && \
+  source /opt/dobot-cr3/ros2_interfaces/dobot_cr3_control/install/setup.bash && \
+  source /opt/dobot-cr3/edge/ros2_ws/install/setup.bash && \
+  ros2 launch dobot_cr3_weblab weblab.launch.py'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

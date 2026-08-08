@@ -486,6 +486,85 @@ class Gateway:
                         return service_id
         return None
 
+    # ── HTTP: video passthrough ─────────────────────────────────────────────
+
+    async def handle_video(self, request: web.Request) -> web.StreamResponse:
+        """Proxy /api/video/* to go2rtc, stripping the prefix.
+
+        Cloudflare Tunnel ingress cannot rewrite paths, so a rule pointing
+        /api/video/* straight at go2rtc would deliver /api/video/api/webrtc to
+        a server that serves /api/webrtc. Routing it through here keeps the
+        tunnel config to a single rule and puts all path knowledge in one file.
+
+        Only the WebRTC *signalling* crosses this proxy — an SDP offer and an
+        answer. The media itself is a peer connection that never touches this
+        process. The MSE fallback does stream through it, which is the price of
+        working at all on a network where UDP hole punching fails.
+        """
+        tail = request.match_info.get('tail', '')
+        target = f'{self.config.go2rtc_url}/{tail}'
+        if request.query_string:
+            target = f'{target}?{request.query_string}'
+
+        # WebSocket upgrade (go2rtc's MSE/player socket).
+        if request.headers.get('Upgrade', '').lower() == 'websocket':
+            return await self._proxy_websocket(request, target)
+
+        body = await request.read()
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.request(
+                    request.method,
+                    target,
+                    data=body or None,
+                    headers={k: v for k, v in request.headers.items()
+                             if k.lower() in ('content-type', 'accept')},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as upstream:
+                    payload = await upstream.read()
+                    return web.Response(
+                        status=upstream.status,
+                        body=payload,
+                        content_type=upstream.content_type,
+                    )
+        except Exception as exc:
+            log.warning('[video] proxy failed for %s: %s', target, exc)
+            return web.json_response({'error': 'video unavailable'}, status=502)
+
+    async def _proxy_websocket(
+        self, request: web.Request, target: str
+    ) -> web.WebSocketResponse:
+        client = web.WebSocketResponse()
+        await client.prepare(request)
+        target = target.replace('http://', 'ws://', 1)
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.ws_connect(target) as upstream:
+
+                    async def pump(source, sink):
+                        async for message in source:
+                            if message.type is aiohttp.WSMsgType.TEXT:
+                                await sink.send_str(message.data)
+                            elif message.type is aiohttp.WSMsgType.BINARY:
+                                await sink.send_bytes(message.data)
+                            else:
+                                break
+
+                    tasks = [
+                        asyncio.create_task(pump(client, upstream)),
+                        asyncio.create_task(pump(upstream, client)),
+                    ]
+                    try:
+                        await asyncio.wait(
+                            tasks, return_when=asyncio.FIRST_COMPLETED)
+                    finally:
+                        for task in tasks:
+                            task.cancel()
+                        await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception as exc:
+            log.warning('[video] websocket proxy failed: %s', exc)
+        return client
+
     async def handle_health(self, request: web.Request) -> web.Response:
         """Unauthenticated liveness. Exposes no lab data on purpose — an
         operator has to be able to curl it while debugging the tunnel."""
@@ -522,6 +601,7 @@ class Config:
     lease_secret: str
     jwt_secret: str
     bridge_url: str
+    go2rtc_url: str
     host: str
     port: int
     default_role: str
@@ -544,6 +624,8 @@ class Config:
             lease_secret=os.environ.get('LAB_CONTROL_SIGNING_SECRET', ''),
             jwt_secret=os.environ.get('SUPABASE_JWT_SECRET', ''),
             bridge_url=os.environ.get('FOXGLOVE_BRIDGE_URL', 'ws://127.0.0.1:8765'),
+            go2rtc_url=os.environ.get(
+                'GO2RTC_URL', 'http://127.0.0.1:1984').rstrip('/'),
             host=os.environ.get('GATEWAY_HOST', '127.0.0.1'),
             port=int(os.environ.get('GATEWAY_PORT', '8766')),
             default_role=os.environ.get('LAB_DEFAULT_ROLE', ''),
@@ -564,6 +646,7 @@ def build_app(config: Config) -> web.Application:
             web.get('/ws', gateway.handle_ws),
             web.get('/health', gateway.handle_health),
             web.post('/api/estop', gateway.handle_estop),
+            web.route('*', '/api/video/{tail:.*}', gateway.handle_video),
         ]
     )
 

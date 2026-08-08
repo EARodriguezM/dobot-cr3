@@ -1,0 +1,6 @@
+# Finger travel in metres (0.0 = open) and grip force.
+float64 position
+float64 max_effort
+---
+bool ok
+string message

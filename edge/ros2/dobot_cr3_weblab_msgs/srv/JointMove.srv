@@ -1,0 +1,5 @@
+# Absolute joint target in degrees, six values.
+float64[] joints_deg
+---
+bool ok
+string message

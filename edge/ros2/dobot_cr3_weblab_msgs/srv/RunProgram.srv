@@ -1,0 +1,8 @@
+# A teach-pendant program, sequenced by this node rather than by the browser so
+# it survives the operator's tab closing. steps_json is the same array the web
+# UI stores in the platform's lab_settings table.
+string name
+string steps_json
+---
+bool ok
+string message

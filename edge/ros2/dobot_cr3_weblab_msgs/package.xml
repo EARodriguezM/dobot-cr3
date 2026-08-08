@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>dobot_cr3_weblab</name>
+  <version>0.1.0</version>
+  <description>
+    Web-facing ROS 2 surface for the CR3 remote lab: a vetted service set, one
+    JSON telemetry topic, a teach-pendant program runner and a motion watchdog.
+  </description>
+  <maintainer email="primbio@unal.edu.co">PRIMBIO</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>dobot_cr3_weblab_msgs</exec_depend>
+  <!-- The driver interfaces are a soft dependency on purpose: the node runs
+       without them and reports the robot as unavailable. -->
+  <exec_depend condition="0">dobot_cr_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

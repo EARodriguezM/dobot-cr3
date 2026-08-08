@@ -1,0 +1,28 @@
+# Cloudflare Tunnel for dobot-cr3-control.primbiolab.org.
+#
+# The lab computer never opens a public port: cloudflared makes an outbound
+# connection and everything arrives through it.
+#
+# One rule and a mandatory catch-all. Everything goes to the gatekeeper, which
+# owns path routing — /ws to foxglove_bridge after authenticating the socket,
+# /api/video/* to go2rtc with the prefix stripped, /api/estop and /health
+# handled directly. Tunnel ingress cannot rewrite paths, so pointing rules at
+# go2rtc directly would deliver /api/video/api/webrtc to a server that serves
+# /api/webrtc.
+#
+# Nothing here points at foxglove_bridge (:8765) or go2rtc (:1984): both bind
+# to localhost only, behind the gatekeeper. The bridge has no authentication of
+# its own, so exposing it would expose the robot.
+#
+# If this hostname is behind a Cloudflare Access policy, add a bypass for
+# /ws/* — a browser cannot follow Access's interactive 302 during a WebSocket
+# upgrade. Security then lives at the application layer, which is the point of
+# the gatekeeper.
+
+tunnel: REPLACE-WITH-TUNNEL-UUID
+credentials-file: /etc/cloudflared/REPLACE-WITH-TUNNEL-UUID.json
+
+ingress:
+  - hostname: dobot-cr3-control.primbiolab.org
+    service: http://127.0.0.1:8766
+  - service: http_status:404

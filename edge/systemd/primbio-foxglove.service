@@ -1,0 +1,20 @@
+[Unit]
+Description=foxglove_bridge (ROS 2 telemetry for the Dobot CR3 lab)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=primbio
+
+# Bound to localhost deliberately: foxglove_bridge does not authenticate, so
+# the gatekeeper in front of it is what makes it safe to reach from a browser.
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && \
+  source /opt/dobot-cr3/edge/ros2_ws/install/setup.bash && \
+  ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+    port:=8765 address:=127.0.0.1 capabilities:=[clientPublish,services,connectionGraph,assets]'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

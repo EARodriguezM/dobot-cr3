@@ -1,0 +1,40 @@
+[Unit]
+Description=PRIMBIO edge gatekeeper (Dobot CR3)
+Documentation=https://github.com/EARodriguezM/dobot-cr3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=primbio
+WorkingDirectory=/opt/dobot-cr3/edge/gateway
+
+# Identity of this lab in the platform. LAB_PROJECT_ID is the projects.id row
+# the lab belongs to: the role is read from project_roles[<this id>] in the
+# caller's JWT, so no database credential is needed here at all.
+Environment=SUPABASE_URL=https://REPLACE.supabase.co
+Environment=LAB_PROJECT_ID=REPLACE-WITH-PROJECT-UUID
+Environment=LAB_SLUG=dobot-cr3
+
+# Shared with the web app. Without it no lease can be verified and every
+# motion command is refused, leaving the lab view-only. Keep it out of this
+# file in production: use an EnvironmentFile with mode 0600.
+EnvironmentFile=/etc/primbio/gateway.env
+
+Environment=FOXGLOVE_BRIDGE_URL=ws://127.0.0.1:8765
+Environment=GO2RTC_URL=http://127.0.0.1:1984
+Environment=GATEWAY_HOST=127.0.0.1
+Environment=GATEWAY_PORT=8766
+
+ExecStart=/usr/bin/python3 -m primbio_gateway.server
+Restart=always
+RestartSec=5
+
+# The gatekeeper needs no privileges beyond a socket.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

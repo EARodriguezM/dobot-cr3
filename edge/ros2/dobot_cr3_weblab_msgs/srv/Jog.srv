@@ -1,0 +1,7 @@
+# Start a continuous jog on one axis. An empty axis_id stops motion, which is
+# also what /weblab/jog_stop does — the gatekeeper allows the stop without the
+# control lease and this one only with it.
+string axis_id
+---
+bool ok
+string message

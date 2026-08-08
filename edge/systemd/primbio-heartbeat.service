@@ -1,0 +1,22 @@
+[Unit]
+Description=PRIMBIO lab heartbeat (Dobot CR3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=primbio
+
+# The beat goes straight to Supabase, never through the hub, so a hub outage
+# cannot black out every lab. Only the anon key is needed: the per-lab secret
+# is what authenticates it.
+Environment=SUPABASE_URL=https://REPLACE.supabase.co
+Environment=LAB_SLUG=dobot-cr3
+EnvironmentFile=/etc/primbio/heartbeat.env
+
+ExecStart=/usr/bin/node /opt/dobot-cr3/scripts/heartbeat.mjs
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

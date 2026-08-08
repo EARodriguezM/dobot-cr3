@@ -119,6 +119,7 @@ class GatewayHarness:
             lease_secret=LEASE_SECRET,
             jwt_secret='',
             bridge_url=f'http://127.0.0.1:{self.bridge.port}/',
+            go2rtc_url='http://127.0.0.1:1',
             host='127.0.0.1',
             port=0,
             default_role='',

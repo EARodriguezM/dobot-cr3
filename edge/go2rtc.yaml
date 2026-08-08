@@ -1,0 +1,36 @@
+# Camera sources for the Dobot CR3 cell.
+#
+# This file is the only place camera credentials and IPs exist. go2rtc pulls
+# each source once and fans it out to every viewer over WebRTC, which is what
+# makes a class of twenty watching affordable on a Raspberry Pi — the previous
+# implementation proxied MJPEG per viewer and did not scale past a handful.
+#
+# The stream names here are what the web UI offers in its camera-wall pickers;
+# it discovers them at runtime from /api/video/api/streams, so adding a camera
+# is this file plus a restart, with no change to the web app.
+#
+# Restarting go2rtc drops every active WebRTC session, so add cameras when
+# nobody is mid-experiment.
+
+streams:
+  # RTSP/H.264 is handled natively — no MJPEG bridge needed any more.
+  cell: rtsp://USER:PASSWORD@192.168.1.50:554/Streaming/Channels/101
+  wrist: rtsp://USER:PASSWORD@192.168.1.51:554/Streaming/Channels/101
+  # A USB camera on the lab computer itself:
+  # bench: exec:libcamera-vid -t 0 --inline --codec h264 -o - #{output=h264}
+
+api:
+  # Localhost only: cloudflared is the sole ingress, and the tunnel maps
+  # /api/video/* here. Never bind this to 0.0.0.0.
+  listen: "127.0.0.1:1984"
+
+webrtc:
+  candidates:
+    # Force the relay path through the tunnel when hole punching fails, rather
+    # than leaving a viewer with a blank tile.
+    - stun:8555
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+
+log:
+  level: info
