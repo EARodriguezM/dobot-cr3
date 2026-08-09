@@ -1,18 +1,23 @@
 # Lab computer deployment (Raspberry Pi)
 
-How to expose the hardware of a lab at
-`https://<slug>-control.primbiolab.org` from a Raspberry Pi (or any lab PC)
-behind the university NAT.
+How to expose the Dobot CR3 at `https://dobot-cr3-control.primbiolab.org` from
+the lab computer behind the university NAT. Unit files and configuration live
+in [`edge/`](../edge/) — this document is the walkthrough around them.
 
-The machine runs four services, all outbound-only — **the hardware never
-opens a public port**:
+Five services, all outbound-only — **the hardware never opens a public port**:
 
 | Service | Port (local) | Purpose |
 |---|---|---|
 | `cloudflared` | — | Outbound tunnel; the only ingress path |
-| `go2rtc` | 1984 | WebRTC (<0.5 s) camera streaming, MSE fallback |
-| `foxglove_bridge` | 8765 | ROS 2 ⇄ WebSocket telemetry/commands |
+| **gatekeeper** | **8766** | **Authenticates every socket and authorizes every command; the only service the tunnel reaches** |
+| `go2rtc` | 1984 | WebRTC camera fan-out, MSE fallback. Localhost only |
+| `foxglove_bridge` | 8765 | ROS 2 ⇄ WebSocket. **No auth of its own** — localhost only |
+| `weblab` node | — | The vetted `/weblab/*` surface, telemetry, program runner, watchdog |
 | `heartbeat` | — | Liveness beat to the platform DB |
+
+> The tunnel points at the gatekeeper, never at `foxglove_bridge`. The bridge
+> lets anyone who reaches it call any ROS service, so exposing it would expose
+> the robot. See [hardware.md](hardware.md) and [`edge/README.md`](../edge/README.md).
 
 ## 1. Cloudflare Tunnel
 
@@ -30,14 +35,15 @@ tunnel: <TUNNEL-UUID>
 credentials-file: /etc/cloudflared/<TUNNEL-UUID>.json
 
 ingress:
-  - hostname: <slug>-control.primbiolab.org
-    path: ^/api/video/.*
-    service: http://localhost:1984
-  - hostname: <slug>-control.primbiolab.org
-    path: ^/ws(/.*)?$
-    service: ws://localhost:8765
+  - hostname: dobot-cr3-control.primbiolab.org
+    service: http://127.0.0.1:8766
   - service: http_status:404
 ```
+
+One rule, because Cloudflare ingress cannot rewrite paths: a rule pointing
+`/api/video/*` straight at go2rtc would deliver `/api/video/api/webrtc` to a
+server that serves `/api/webrtc`. The gatekeeper owns path routing instead.
+The ready-made file is [`edge/cloudflared/config.yml`](../edge/cloudflared/config.yml).
 
 Run as systemd so it survives power cuts:
 
@@ -64,7 +70,7 @@ webrtc:
     - urls: [stun:stun.l.google.com:19302]
 
 api:
-  listen: ":1984"
+  listen: "127.0.0.1:1984"
 ```
 
 WebRTC negotiates UDP through STUN; when the university NAT defeats hole
@@ -76,8 +82,14 @@ WHEP at `/api/video/api/webrtc?src=cam`.
 
 ```bash
 sudo apt install ros-$ROS_DISTRO-foxglove-bridge
-ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+  port:=8765 address:=127.0.0.1 \
+  capabilities:=[clientPublish,services,connectionGraph,assets]
 ```
+
+`address:=127.0.0.1` is not optional — it is what keeps the unauthenticated
+bridge off the network. `services` must be in the capability list or every
+robot command fails.
 
 C++ bridge, chosen over rosbridge_suite deliberately: the Python rosbridge
 stalls under multiple concurrent clients and large messages. The template's

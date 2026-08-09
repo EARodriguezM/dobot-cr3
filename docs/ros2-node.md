@@ -1,7 +1,7 @@
 # ROS 2 node guidelines for remote labs
 
-Execution and security rules for the hardware-side ROS 2 code. Drafted from the platform architecture document; adapt topic/action names to
-your hardware.
+Execution and security rules for the hardware-side ROS 2 code, drawn from the
+platform architecture document.
 
 ## Executor and callback groups
 
