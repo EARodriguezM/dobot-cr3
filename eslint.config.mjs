@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated deployment bundles: thousands of vendored files that are not
+    // ours to lint, and linting them fails the build on their style choices.
+    ".open-next/**",
+    ".wrangler/**",
   ]),
 ]);
 

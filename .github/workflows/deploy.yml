@@ -1,0 +1,137 @@
+name: Deploy to Cloudflare
+
+# Every push to main is verified and deployed to the dobot-cr3 Worker, which
+# serves dobot-cr3.primbiolab.org. Can also be run by hand from the Actions tab.
+#
+# This Worker is only the interface. The hardware half lives on the lab
+# computer behind a Cloudflare Tunnel and is deployed separately (see
+# edge/README.md) — nothing here touches the robot.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deployment at a time; a newer commit supersedes a queued one but never
+# interrupts a deploy already talking to Cloudflare.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Kept separate from the deploy so a red build is attributable at a glance,
+  # and so the authorization tests below gate the release rather than trailing
+  # it.
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          python3 -m pip install --quiet -r edge/gateway/requirements.txt pytest
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # The two invariants that carry the safety of the lab: stops never
+      # require the control lease, and motion requires both the operator role
+      # and a live lease token. Also covers the behaviour the lab exists for —
+      # a viewer who does nothing still sees the operator's commands.
+      - name: Edge authorization and program runner
+        run: npm run test:gateway
+
+      # One active controller, N viewers: queueing, crash recovery within the
+      # lease TTL, admin override, and lease-free emergency stop.
+      - name: Control lease
+        run: npm run test:lease
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    env:
+      # NEXT_PUBLIC_* values are inlined into the browser bundle at build time,
+      # so they must exist here. They are repository *variables*, not secrets —
+      # the browser receives them either way, and pretending otherwise just
+      # makes them harder to audit.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_AUTH_COOKIE_DOMAIN: ${{ vars.NEXT_PUBLIC_AUTH_COOKIE_DOMAIN }}
+      NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS: ${{ vars.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS }}
+      NEXT_PUBLIC_LAB_SLUG: ${{ vars.NEXT_PUBLIC_LAB_SLUG }}
+      NEXT_PUBLIC_CONTROL_URL: ${{ vars.NEXT_PUBLIC_CONTROL_URL }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # The 3D model is generated from the ROS 2 submodule at build time. If it
+      # is unavailable — private, renamed, or the runner has no access — the
+      # sync script skips and the 3D tab reports the model as unavailable. That
+      # must not take the whole lab UI offline, so this step cannot fail the
+      # deploy.
+      - name: Fetch the robot description (optional)
+        continue-on-error: true
+        run: git submodule update --init --recursive --depth 1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      # Fail loudly rather than shipping a lab that silently cannot reach
+      # Supabase or the hardware: an unconfigured build still compiles and
+      # boots into demo mode, so a missing variable would otherwise deploy a
+      # convincing-looking UI with sign-in dead and no robot behind it.
+      - name: Check build configuration
+        run: |
+          missing=""
+          for v in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY \
+                   NEXT_PUBLIC_AUTH_COOKIE_DOMAIN NEXT_PUBLIC_ALLOWED_EMAIL_DOMAINS \
+                   NEXT_PUBLIC_LAB_SLUG NEXT_PUBLIC_CONTROL_URL; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository variables:$missing"
+            echo "Add them under Settings → Secrets and variables → Actions → Variables."
+            exit 1
+          fi
+          echo "All build variables present."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and deploy
+        run: npx opennextjs-cloudflare build && npx opennextjs-cloudflare deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # LAB_CONTROL_SIGNING_SECRET is a Worker secret, not a build variable, and
+      # is set once with `wrangler secret put` — never from CI, which would put
+      # it in a workflow log's environment. Without it the app cannot mint lease
+      # tokens and the lab stays view-only, which is the safe failure.
+      - name: Remind about the control signing secret
+        run: |
+          echo "::notice::Deployed. If this is a first deploy, set the Worker secret:"
+          echo "::notice::  npx wrangler secret put LAB_CONTROL_SIGNING_SECRET"
+          echo "::notice::It must match /etc/primbio/gateway.env on the lab computer."

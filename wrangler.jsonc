@@ -1,0 +1,30 @@
+// Cloudflare Workers configuration for the Dobot CR3 lab UI, built through the
+// OpenNext adapter and deployed by .github/workflows/deploy.yml on every push
+// to main (or by hand with `npm run deploy`).
+//
+// This Worker is only half of the lab. It serves the interface at
+// dobot-cr3.primbiolab.org and stays up whether or not the robot does; the
+// hardware lives behind dobot-cr3-control.primbiolab.org, a Cloudflare Tunnel
+// to the lab computer that this Worker never proxies (see DEPLOY.md).
+//
+// Build-time configuration (NEXT_PUBLIC_*) is inlined into the browser bundle
+// and therefore comes from repository variables, not secrets. Server-only
+// secrets are NOT set here — use `wrangler secret put <NAME>`, and note that
+// LAB_CONTROL_SIGNING_SECRET must match the value on the lab computer or every
+// motion command is refused and the lab silently goes view-only.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dobot-cr3",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": true,
+  "routes": [{ "pattern": "dobot-cr3.primbiolab.org", "custom_domain": true }]
+}
