@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ControlState } from "./store";
+import type { ControlState, ControlUser } from "./store";
 
 // Client half of the control lease.
 //
@@ -32,6 +32,14 @@ export interface ControlSession {
   force: () => Promise<void>;
   release: () => Promise<void>;
   estop: () => Promise<void>;
+  /** Ask the current holder to hand control over. */
+  requestHandover: () => Promise<void>;
+  /** Holder only: accept or decline a pending request. */
+  respondToHandover: (userId: string, accept: boolean) => Promise<void>;
+  /** Operators waiting on this holder to pass control over. */
+  handoverRequests: ControlUser[];
+  /** True while this client is waiting for the holder to answer. */
+  awaitingHandover: boolean;
 }
 
 export function useControl(userId: string | null): ControlSession {
@@ -116,6 +124,45 @@ export function useControl(userId: string | null): ControlSession {
     await post("/api/control/estop");
   }, [post]);
 
+  const handover = useCallback(
+    async (action: string, userId?: string) => {
+      try {
+        await fetch("/api/control/handover", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, userId }),
+        });
+      } catch {
+        // The state stream is the source of truth; a failed ask just means the
+        // request never registered, which the UI shows by not listing it.
+      }
+    },
+    [],
+  );
+
+  const requestHandover = useCallback(async () => {
+    await handover("request");
+    // Waiting for control counts as wanting it, so start heartbeating: if the
+    // holder simply disappears instead of answering, the queue promotes us.
+    setWaiting(true);
+  }, [handover]);
+
+  const respondToHandover = useCallback(
+    async (userId: string, accept: boolean) => {
+      await handover(accept ? "accept" : "decline", userId);
+      if (accept) {
+        // We are no longer the holder; stop heartbeating so the lease is not
+        // kept alive on behalf of somebody who has handed it over.
+        setWaiting(false);
+        setMintedToken(null);
+      }
+    },
+    [handover],
+  );
+
+  const handoverRequests = state?.handoverRequests ?? [];
+  const awaitingHandover = handoverRequests.some((u) => u.id === userId);
+
   return {
     state,
     leaseToken,
@@ -126,5 +173,9 @@ export function useControl(userId: string | null): ControlSession {
     force,
     release,
     estop,
+    requestHandover,
+    respondToHandover,
+    handoverRequests,
+    awaitingHandover,
   };
 }

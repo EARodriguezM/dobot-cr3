@@ -29,12 +29,21 @@ implemented once and shared by both backends.
   **automatically inherits the lease** when it heads the queue and the lease is
   free.
 - `POST /api/control/release` — voluntary release, or leave the queue.
+- `POST /api/control/handover` — the polite path between two operators who are
+  both entitled to drive: one asks, and the person currently driving accepts or
+  declines. Control moves in a single step, so there is no moment where both
+  hold it and none where neither does. Distinct from the queue (which waits for
+  a lease to lapse) and from a force (which does not ask).
 - `POST /api/control/force` — admins and the owner only. A lease is held by a
   browser and browsers get left open; an arm parked by someone who went to
   lunch would otherwise block the lab until their tab stopped beating.
 
 Stop heartbeating — crash, tab close, network loss — and the lease expires by
 itself within 15 s. Nothing has to notice, and nothing has to be revoked.
+
+**Leases are per lab.** dobot-cr3 and tclab each have their own controller at
+the same time; a lease on one never blocks another, and an emergency stop on
+one does not stop the other. Everything below is scoped to a single lab.
 
 ## Reaching the hardware with it
 
@@ -43,7 +52,7 @@ behind an outbound-only tunnel and cannot see Redis at all. So "I hold the
 lease" travels to the edge as a **short-lived signed token**:
 
 ```text
-take/heartbeat ──► lease token (HS256, 20 s, bound to user + lab slug)
+take/heartbeat ──► lease token (HS256, 10 s, bound to user + lab slug)
                         │
                         ▼  sent on the WebSocket, refreshed every heartbeat
               edge gatekeeper verifies it before relaying any motion command
@@ -110,12 +119,15 @@ REDIS_URL=redis://localhost:6379 \
   node --experimental-strip-types scripts/test-control-lease.mjs
 ```
 
-Covers: a second operator is queued rather than granted; a holder that stops
+Covers: two labs each holding their own controller at once; a second operator
+is queued rather than granted; a holder that stops
 heartbeating loses control within the TTL; the next in line inherits it on
 their own heartbeat; force displaces a live holder and the displaced holder
-does not reclaim it on their next beat; e-stop is recorded from someone holding
-nothing; and every mutation reaches a subscriber. Both backends must pass
-identically.
+does not reclaim it on their next beat; a handover moves control in one step
+and leaves the previous holder unable to drive or to reclaim it; only the real
+holder can accept, and only a request that was actually made; e-stop is
+recorded from someone holding nothing and does not cross labs; and every
+mutation reaches a subscriber. Both backends must pass identically.
 
 The edge half is covered by `edge/gateway/tests/` — in particular that a viewer
 who does nothing still receives the operator's commands, and that a viewer's

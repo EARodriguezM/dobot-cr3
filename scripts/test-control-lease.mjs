@@ -151,6 +151,99 @@ await check("e-stop is recorded for everyone, from a non-holder", async () => {
   assert.equal(state.holder?.id, ana.id);
 });
 
+console.log("\nlabs are independent of each other");
+
+await check("two labs each have their own controller at the same time", async () => {
+  // The whole platform runs many labs at once. A lease is per lab, so an
+  // operator driving the arm must not block anyone driving a different rig.
+  const dobot = lab("dobot-cr3");
+  const tclab = lab("tclab");
+
+  assert.equal((await store.take(dobot, ana)).granted, true);
+  assert.equal(
+    (await store.take(tclab, beto)).granted,
+    true,
+    "a lease on one lab blocked a lease on another",
+  );
+
+  assert.equal((await store.state(dobot)).holder?.id, ana.id);
+  assert.equal((await store.state(tclab)).holder?.id, beto.id);
+
+  // And releasing one leaves the other untouched.
+  await store.release(dobot, ana.id);
+  assert.equal((await store.state(dobot)).holder, null);
+  assert.equal((await store.state(tclab)).holder?.id, beto.id);
+});
+
+await check("an e-stop on one lab does not stop another", async () => {
+  const one = lab("estop-a");
+  const two = lab("estop-b");
+  await store.take(one, ana);
+  await store.take(two, beto);
+  await store.estop(one, ana);
+
+  assert.ok((await store.state(one)).estopAt);
+  assert.equal((await store.state(two)).estopAt, null, "e-stop crossed labs");
+});
+
+console.log("\npassing control between operators");
+
+await check("the holder can hand control over, and then cannot drive", async () => {
+  const id = lab("handover");
+  await store.take(id, ana);
+
+  assert.equal(await store.requestHandover(id, beto), true);
+  assert.deepEqual(
+    (await store.state(id)).handoverRequests.map((u) => u.id),
+    [beto.id],
+    "the holder was not told who is asking",
+  );
+
+  assert.equal(await store.acceptHandover(id, ana.id, beto.id), true);
+
+  const after = await store.state(id);
+  assert.equal(after.holder?.id, beto.id, "control did not move");
+  assert.deepEqual(after.handoverRequests, [], "the request was left pending");
+
+  // The point of the whole exercise: the previous holder is no longer able to
+  // drive, and does not silently get it back on their next heartbeat.
+  const anaBeat = await store.heartbeat(id, ana);
+  assert.equal(anaBeat.granted, false, "the previous holder kept control");
+  assert.equal((await store.state(id)).holder?.id, beto.id);
+});
+
+await check("declining leaves the holder in place", async () => {
+  const id = lab("decline");
+  await store.take(id, ana);
+  await store.requestHandover(id, beto);
+
+  assert.equal(await store.declineHandover(id, ana.id, beto.id), true);
+  const after = await store.state(id);
+  assert.equal(after.holder?.id, ana.id);
+  assert.deepEqual(after.handoverRequests, []);
+});
+
+await check("only the holder can accept, and only a real request", async () => {
+  const id = lab("handover-auth");
+  await store.take(id, ana);
+  await store.requestHandover(id, beto);
+
+  // Caro is not the holder: she cannot give Ana's control away.
+  assert.equal(await store.acceptHandover(id, caro.id, beto.id), false);
+  assert.equal((await store.state(id)).holder?.id, ana.id);
+
+  // And the holder cannot hand control to somebody who never asked.
+  assert.equal(await store.acceptHandover(id, ana.id, caro.id), false);
+  assert.equal((await store.state(id)).holder?.id, ana.id);
+});
+
+await check("nobody can request a handover from themselves", async () => {
+  const id = lab("self-handover");
+  await store.take(id, ana);
+  assert.equal(await store.requestHandover(id, ana), false);
+  assert.deepEqual((await store.state(id)).handoverRequests, []);
+});
+
 console.log("\nspectator fan-out");
 
 await check("every mutation reaches a subscriber", async () => {

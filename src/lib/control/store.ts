@@ -20,6 +20,8 @@ export interface ControlState {
   holder: ControlUser | null;
   queue: ControlUser[];
   presence: ControlUser[];
+  /** Operators asking the current holder to hand control over. */
+  handoverRequests: ControlUser[];
   /** Timestamp of the last emergency stop, if any. */
   estopAt: number | null;
   estopBy: string | null;
@@ -40,6 +42,7 @@ interface StoreState {
   holder: { user: ControlUser; expires: number } | null;
   queue: Map<string, Entry>;
   presence: Map<string, Entry>;
+  handovers: Map<string, Entry>;
   estopAt: number | null;
   estopBy: string | null;
 }
@@ -50,6 +53,52 @@ function prune(s: StoreState, now: number): void {
   if (s.holder && s.holder.expires <= now) s.holder = null;
   for (const [id, e] of s.queue) if (now - e.last > QUEUE_TTL_MS) s.queue.delete(id);
   for (const [id, e] of s.presence) if (now - e.last > PRESENCE_TTL_MS) s.presence.delete(id);
+  // A handover request is meaningless once the person who asked has gone, or
+  // once the holder they asked has changed.
+  for (const [id, e] of s.handovers) {
+    if (now - e.last > QUEUE_TTL_MS || s.holder == null) s.handovers.delete(id);
+  }
+}
+
+// Ask the current holder to pass control over. Unlike the queue — which waits
+// for the lease to lapse — and unlike an admin force, this needs the holder to
+// agree, so it is the polite path between two operators who are both entitled
+// to drive.
+function requestHandover(s: StoreState, user: ControlUser, now: number): boolean {
+  prune(s, now);
+  if (!s.holder || s.holder.user.id === user.id) return false;
+  const existing = s.handovers.get(user.id);
+  s.handovers.set(user.id, {
+    user,
+    joined: existing?.joined ?? now,
+    last: now,
+  });
+  return true;
+}
+
+// The holder agrees. Control moves in one step: there is no window where both
+// of them hold it, and none where neither does.
+function acceptHandover(
+  s: StoreState,
+  holderId: string,
+  toUserId: string,
+  now: number,
+): ControlUser | null {
+  prune(s, now);
+  if (s.holder?.user.id !== holderId) return null;
+  const incoming = s.handovers.get(toUserId);
+  if (!incoming) return null;
+
+  s.holder = { user: incoming.user, expires: now + LEASE_TTL_MS };
+  s.handovers.clear();
+  s.queue.delete(incoming.user.id);
+  return incoming.user;
+}
+
+function declineHandover(s: StoreState, holderId: string, fromUserId: string, now: number): boolean {
+  prune(s, now);
+  if (s.holder?.user.id !== holderId) return false;
+  return s.handovers.delete(fromUserId);
 }
 
 function orderedQueue(s: StoreState): Entry[] {
@@ -137,6 +186,9 @@ function publicState(s: StoreState, now: number): ControlState {
   return {
     holder: s.holder?.user ?? null,
     queue: orderedQueue(s).map((e) => e.user),
+    handoverRequests: [...s.handovers.values()]
+      .sort((a, b) => a.joined - b.joined)
+      .map((e) => e.user),
     presence: [...s.presence.values()]
       .sort((a, b) => a.joined - b.joined)
       .map((e) => e.user),
@@ -151,6 +203,7 @@ interface WireState {
   holder: { user: ControlUser; expires: number } | null;
   queue: Entry[];
   presence: Entry[];
+  handovers: Entry[];
   estopAt: number | null;
   estopBy: string | null;
 }
@@ -160,6 +213,7 @@ function toWire(s: StoreState): WireState {
     holder: s.holder,
     queue: [...s.queue.values()],
     presence: [...s.presence.values()],
+    handovers: [...s.handovers.values()],
     estopAt: s.estopAt,
     estopBy: s.estopBy,
   };
@@ -170,6 +224,7 @@ function fromWire(w: WireState | null): StoreState {
     holder: w?.holder ?? null,
     queue: new Map((w?.queue ?? []).map((e) => [e.user.id, e])),
     presence: new Map((w?.presence ?? []).map((e) => [e.user.id, e])),
+    handovers: new Map((w?.handovers ?? []).map((e) => [e.user.id, e])),
     estopAt: w?.estopAt ?? null,
     estopBy: w?.estopBy ?? null,
   };
@@ -182,6 +237,11 @@ export interface ControlStore {
   take(labId: string, user: ControlUser): Promise<TakeResult>;
   /** Seize the lease regardless of who holds it. Admins only — see route. */
   force(labId: string, user: ControlUser): Promise<TakeResult>;
+  /** Ask the current holder to hand control over. */
+  requestHandover(labId: string, user: ControlUser): Promise<boolean>;
+  /** Holder accepts: control moves in one step. */
+  acceptHandover(labId: string, holderId: string, toUserId: string): Promise<boolean>;
+  declineHandover(labId: string, holderId: string, fromUserId: string): Promise<boolean>;
   heartbeat(labId: string, user: ControlUser): Promise<TakeResult>;
   release(labId: string, userId: string): Promise<void>;
   estop(labId: string, by: ControlUser): Promise<void>;
@@ -220,6 +280,21 @@ class MemoryStore implements ControlStore {
     const r = forceAcquire(this.lab(id), user, Date.now());
     this.emit(id);
     return r;
+  }
+  async requestHandover(id: string, user: ControlUser): Promise<boolean> {
+    const ok = requestHandover(this.lab(id), user, Date.now());
+    this.emit(id);
+    return ok;
+  }
+  async acceptHandover(id: string, holderId: string, toUserId: string): Promise<boolean> {
+    const moved = acceptHandover(this.lab(id), holderId, toUserId, Date.now());
+    this.emit(id);
+    return moved !== null;
+  }
+  async declineHandover(id: string, holderId: string, fromUserId: string): Promise<boolean> {
+    const ok = declineHandover(this.lab(id), holderId, fromUserId, Date.now());
+    this.emit(id);
+    return ok;
   }
   async heartbeat(id: string, user: ControlUser): Promise<TakeResult> {
     const before = publicState(this.lab(id), Date.now()).holder?.id ?? null;
@@ -315,6 +390,16 @@ class RedisStore implements ControlStore {
   }
   force(id: string, user: ControlUser): Promise<TakeResult> {
     return this.mutate(id, (s, now) => forceAcquire(s, user, now));
+  }
+  requestHandover(id: string, user: ControlUser): Promise<boolean> {
+    return this.mutate(id, (s, now) => requestHandover(s, user, now));
+  }
+  acceptHandover(id: string, holderId: string, toUserId: string): Promise<boolean> {
+    return this.mutate(
+      id, (s, now) => acceptHandover(s, holderId, toUserId, now) !== null);
+  }
+  declineHandover(id: string, holderId: string, fromUserId: string): Promise<boolean> {
+    return this.mutate(id, (s, now) => declineHandover(s, holderId, fromUserId, now));
   }
   heartbeat(id: string, user: ControlUser): Promise<TakeResult> {
     return this.mutate(id, (s, now) => heartbeat(s, user, now));

@@ -252,6 +252,12 @@ export function LabConsole({
               onForce={() => void control.force()}
               onRelease={() => void control.release()}
               onRequestPromotion={requestPromotion}
+              onRequestHandover={() => void control.requestHandover()}
+              onRespondToHandover={(userId, accept) =>
+                void control.respondToHandover(userId, accept)
+              }
+              handoverRequests={control.handoverRequests}
+              awaitingHandover={control.awaitingHandover}
             />
 
             <button

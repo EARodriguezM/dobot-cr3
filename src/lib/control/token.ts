@@ -16,7 +16,13 @@ import type { ControlUser } from "./store";
 // within one token lifetime without ever learning why. Nothing has to be
 // revoked, and no message has to arrive for the hardware to become safe.
 
-const TOKEN_TTL_SECONDS = 20;
+// Longer than the 5 s heartbeat so a token is always replaced well before it
+// lapses, and short enough that an operator who has just been handed over,
+// forced out or disconnected stops being able to command the hardware quickly.
+// The browser also revokes its own token at the edge the moment the state
+// stream says it is no longer the holder; this bound is the backstop for a
+// client that does not cooperate.
+const TOKEN_TTL_SECONDS = 10;
 
 export function isLeaseSigningConfigured(): boolean {
   return Boolean(process.env.LAB_CONTROL_SIGNING_SECRET);

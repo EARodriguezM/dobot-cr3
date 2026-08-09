@@ -1,6 +1,6 @@
 "use client";
 
-import type { ControlState } from "@/lib/control/store";
+import type { ControlState, ControlUser } from "@/lib/control/store";
 
 // Who is here and who is driving.
 //
@@ -28,6 +28,10 @@ export function SessionPanel({
   onForce,
   onRelease,
   onRequestPromotion,
+  onRequestHandover,
+  onRespondToHandover,
+  handoverRequests,
+  awaitingHandover,
 }: {
   state: ControlState | null;
   userId: string | null;
@@ -41,6 +45,10 @@ export function SessionPanel({
   onRelease: () => void;
   /** Server action; absent when there is nothing to ask for. */
   onRequestPromotion?: () => Promise<void>;
+  onRequestHandover: () => void;
+  onRespondToHandover: (userId: string, accept: boolean) => void;
+  handoverRequests: ControlUser[];
+  awaitingHandover: boolean;
 }) {
   const holder = state?.holder ?? null;
   const someoneElseDriving = holder != null && holder.id !== userId;
@@ -81,6 +89,37 @@ export function SessionPanel({
 
       {canOperate ? (
         <div className="flex flex-col gap-2">
+          {iAmHolder && handoverRequests.length > 0 ? (
+            <div className="mb-1 rounded-md border border-accent bg-accent/10 p-2.5">
+              <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
+                Piden el control
+              </p>
+              <ul className="list-none space-y-1.5">
+                {handoverRequests.map((person) => (
+                  <li key={person.id} className="flex items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-ink">
+                      {person.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onRespondToHandover(person.id, true)}
+                      className="border border-ok px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ok transition hover:bg-ok hover:text-bg"
+                    >
+                      Ceder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRespondToHandover(person.id, false)}
+                      className="border border-line px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink3 transition hover:border-danger hover:text-danger"
+                    >
+                      No
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {iAmHolder ? (
             <button
               type="button"
@@ -99,6 +138,17 @@ export function SessionPanel({
               {waiting && queuePosition >= 0 ? "En cola…" : "Tomar control"}
             </button>
           )}
+
+          {someoneElseDriving ? (
+            <button
+              type="button"
+              onClick={onRequestHandover}
+              disabled={awaitingHandover}
+              className="border-[1.5px] border-line px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {awaitingHandover ? "Esperando respuesta…" : "Pedir el control"}
+            </button>
+          ) : null}
 
           {someoneElseDriving && canAdmin ? (
             <button
