@@ -204,6 +204,38 @@ export interface Database {
           },
         ];
       };
+      role_requests: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          requested_role: Exclude<ProjectRole, "owner">;
+          status: "pending" | "approved" | "rejected";
+          note: string | null;
+          decided_by: string | null;
+          decided_at: string | null;
+          created_at: string;
+        };
+        /** Written only through the RPCs; no insert/update grant exists. */
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "role_requests_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "role_requests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       research_lines: {
         Row: {
           id: string;
@@ -340,6 +372,16 @@ export interface Database {
       is_platform_admin: { Args: Record<string, never>; Returns: boolean };
       set_project_owner: {
         Args: { p_project_id: string; p_user_id: string | null };
+        Returns: boolean;
+      };
+      effective_role: { Args: { p_project_id: string }; Returns: ProjectRole };
+      next_role: { Args: { p_role: ProjectRole }; Returns: ProjectRole | null };
+      request_role_promotion: {
+        Args: { p_project_id: string; p_note?: string | null };
+        Returns: string;
+      };
+      decide_role_request: {
+        Args: { p_request_id: string; p_approve: boolean; p_note?: string | null };
         Returns: boolean;
       };
       is_lab_member: { Args: { lab: string }; Returns: boolean };

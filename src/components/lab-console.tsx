@@ -53,6 +53,7 @@ export function LabConsole({
   initialLayout,
   savePrograms,
   saveLayout,
+  requestPromotion,
 }: {
   controlUrl: string | null;
   labName: string;
@@ -66,6 +67,7 @@ export function LabConsole({
   initialLayout: WallLayout;
   savePrograms: (programs: Program[]) => Promise<boolean>;
   saveLayout: (layout: WallLayout) => Promise<boolean>;
+  requestPromotion?: () => Promise<void>;
 }) {
   const [stage, setStage] = useState<Stage>("cameras");
   const [programs, setPrograms] = useState<Program[]>(initialPrograms);
@@ -249,6 +251,7 @@ export function LabConsole({
               onTake={() => void control.take()}
               onForce={() => void control.force()}
               onRelease={() => void control.release()}
+              onRequestPromotion={requestPromotion}
             />
 
             <button

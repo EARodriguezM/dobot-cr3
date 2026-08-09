@@ -21,6 +21,9 @@ export async function updateLabAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const inMaintenance = formData.get("in_maintenance") === "on";
+  // The checkbox asks the positive question ("publicado"); the column stores
+  // the negative one.
+  const inDevelopment = formData.get("published") !== "on";
 
   if (name.length === 0) redirect("/settings?m=err");
 
@@ -30,6 +33,7 @@ export async function updateLabAction(formData: FormData) {
       name,
       description: description || null,
       in_maintenance: inMaintenance,
+      in_development: inDevelopment,
       updated_at: new Date().toISOString(),
     })
     .eq("id", ctx.lab.id)

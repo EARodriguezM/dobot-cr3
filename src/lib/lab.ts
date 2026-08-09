@@ -29,11 +29,24 @@ export async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
+/** Why a lab is not open to ordinary users, or null when it is. */
+export type LabClosure = "development" | "maintenance" | null;
+
 export interface LabContext {
   configured: boolean;
   user: { id: string; email: string; name: string } | null;
-  lab: { id: string; name: string; description: string | null } | null;
+  lab: {
+    id: string;
+    name: string;
+    description: string | null;
+    inDevelopment: boolean;
+    inMaintenance: boolean;
+  } | null;
   projectId: string | null;
+  /** Set when the lab is closed; admins may still enter, everyone else may not. */
+  closure: LabClosure;
+  /** False when `closure` is set and the caller is not an admin of the lab. */
+  canEnter: boolean;
   /** Role in the lab's project; null = authenticated but not a member. */
   role: ProjectRole | null;
   canOperate: boolean;
@@ -45,6 +58,8 @@ const ANON: LabContext = {
   user: null,
   lab: null,
   projectId: null,
+  closure: null,
+  canEnter: true,
   role: null,
   canOperate: false,
   canAdmin: false,
@@ -64,7 +79,9 @@ export const getLabContext = cache(async (): Promise<LabContext> => {
 
   const { data: lab } = await supabase
     .from("remote_labs")
-    .select("id, name, description, project_id, projects (owner_id)")
+    .select(
+      "id, name, description, in_development, in_maintenance, project_id, projects (owner_id)",
+    )
     .eq("slug", getLabSlug())
     .maybeSingle();
 
@@ -79,9 +96,20 @@ export const getLabContext = cache(async (): Promise<LabContext> => {
         .eq("project_id", lab.project_id)
         .eq("user_id", user.id)
         .maybeSingle();
-      role = membership?.role ?? null;
+      // Since migration 0012 every authenticated account is a viewer of every
+      // project, so an absent membership row means viewer, not "no access".
+      role = membership?.role ?? "viewer";
     }
   }
+
+  const isAdmin = role === "owner" || role === "admin";
+  // Maintenance wins over development: it is the more urgent statement about
+  // what is happening to the hardware right now.
+  const closure: LabClosure = lab?.in_maintenance
+    ? "maintenance"
+    : lab?.in_development
+      ? "development"
+      : null;
 
   const meta = (user?.user_metadata ?? {}) as Record<string, unknown>;
   return {
@@ -95,9 +123,20 @@ export const getLabContext = cache(async (): Promise<LabContext> => {
         }
       : null,
     lab: lab
-      ? { id: lab.id, name: lab.name, description: lab.description }
+      ? {
+          id: lab.id,
+          name: lab.name,
+          description: lab.description,
+          inDevelopment: lab.in_development,
+          inMaintenance: lab.in_maintenance,
+        }
       : null,
     projectId: lab?.project_id ?? null,
+    closure,
+    // Maintenance and development close the lab to ordinary users but never to
+    // the people who have to work on it — otherwise publishing a lab would
+    // require editing the database from outside the app that manages it.
+    canEnter: closure === null || isAdmin,
     role,
     canOperate: role === "owner" || role === "admin" || role === "operator",
     canAdmin: role === "owner" || role === "admin",

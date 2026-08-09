@@ -7,12 +7,19 @@ import {
   removeMemberAction,
   setMemberRoleAction,
 } from "./actions";
+import { decideRequestAction } from "./requests";
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Administrador", hint: "Configura el laboratorio y gestiona el equipo" },
   { value: "operator", label: "Operador", hint: "Puede tomar el control del hardware" },
   { value: "viewer", label: "Observador", hint: "Solo ve video y telemetría" },
 ];
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: "administrador",
+  operator: "operador",
+  viewer: "observador",
+};
 
 const ROLE_STYLE: Record<string, string> = {
   owner: "bg-accent/15 text-accent",
@@ -30,6 +37,8 @@ const MESSAGES: Record<string, { text: string; ok: boolean }> = {
     ok: false,
   },
   dup: { text: "Ese usuario ya es integrante del laboratorio.", ok: false },
+  requested: { text: "Solicitud enviada.", ok: true },
+  reqerr: { text: "No se pudo enviar la solicitud.", ok: false },
 };
 
 const control =
@@ -53,7 +62,8 @@ export default async function LabUsersPage({
   const projectId = ctx.projectId;
 
   const supabase = await createClient();
-  const [{ data: members }, { data: owner }] = await Promise.all([
+  const [{ data: members }, { data: owner }, { data: requests }] =
+    await Promise.all([
     supabase!
       .from("project_members")
       .select(
@@ -65,12 +75,24 @@ export default async function LabUsersPage({
       .select("profiles!projects_owner_id_fkey (email, full_name)")
       .eq("id", projectId)
       .maybeSingle(),
+    // RLS returns only the requests this admin may decide, so no filtering by
+    // permission is needed here.
+    supabase!
+      .from("role_requests")
+      .select(
+        "id, requested_role, note, created_at, profiles!role_requests_user_id_fkey (email, full_name)",
+      )
+      .eq("project_id", projectId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
   ]);
 
   const banner = m ? MESSAGES[m] : undefined;
   const roster = (members ?? []).sort((a, b) =>
     (a.profiles?.email ?? "").localeCompare(b.profiles?.email ?? ""),
   );
+
+  const pending = requests ?? [];
 
   return (
     <div className="mx-auto w-full max-w-2xl p-4 md:p-8">
@@ -96,6 +118,56 @@ export default async function LabUsersPage({
         >
           {banner.text}
         </p>
+      ) : null}
+
+
+      {/* pending requests — above everything else, because somebody is waiting */}
+      {pending.length > 0 ? (
+        <section className="mb-6 rounded-xl border border-accent bg-accent/5 p-4">
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
+            Solicitudes pendientes ({pending.length})
+          </h2>
+          <ul className="list-none space-y-2">
+            {pending.map((request) => (
+              <li
+                key={request.id}
+                className="flex flex-col gap-2 border-b border-line pb-2 last:border-0 last:pb-0 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] text-ink">
+                    {request.profiles?.full_name || request.profiles?.email}
+                  </p>
+                  <p className="font-mono text-[10px] text-ink3">
+                    pide ser {ROLE_LABELS[request.requested_role] ?? request.requested_role}
+                    {request.note ? ` · ${request.note}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <form action={decideRequestAction}>
+                    <input type="hidden" name="request_id" value={request.id} />
+                    <input type="hidden" name="decision" value="approve" />
+                    <button
+                      type="submit"
+                      className="border-[1.5px] border-ok px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ok transition hover:bg-ok hover:text-bg"
+                    >
+                      Aprobar
+                    </button>
+                  </form>
+                  <form action={decideRequestAction}>
+                    <input type="hidden" name="request_id" value={request.id} />
+                    <input type="hidden" name="decision" value="reject" />
+                    <button
+                      type="submit"
+                      className="border border-line px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink3 transition hover:border-danger hover:text-danger"
+                    >
+                      Rechazar
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {/* add someone — first, because it is the most frequent action */}

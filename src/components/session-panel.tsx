@@ -27,6 +27,7 @@ export function SessionPanel({
   onTake,
   onForce,
   onRelease,
+  onRequestPromotion,
 }: {
   state: ControlState | null;
   userId: string | null;
@@ -38,6 +39,8 @@ export function SessionPanel({
   onTake: () => void;
   onForce: () => void;
   onRelease: () => void;
+  /** Server action; absent when there is nothing to ask for. */
+  onRequestPromotion?: () => Promise<void>;
 }) {
   const holder = state?.holder ?? null;
   const someoneElseDriving = holder != null && holder.id !== userId;
@@ -108,10 +111,25 @@ export function SessionPanel({
           ) : null}
         </div>
       ) : (
-        <p className="font-mono text-[11px] leading-relaxed text-ink3">
-          Rol de observador: ves el video, la telemetría y lo que hace el
-          operador, pero no puedes mover el robot.
-        </p>
+        <div className="flex flex-col gap-2">
+          <p className="font-mono text-[11px] leading-relaxed text-ink3">
+            Rol de observador: ves el video, la telemetría y lo que hace el
+            operador, pero no puedes mover el robot.
+          </p>
+          {onRequestPromotion ? (
+            <form action={onRequestPromotion}>
+              <button
+                type="submit"
+                className="w-full border-[1.5px] border-line px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent"
+              >
+                Solicitar ser operador
+              </button>
+              <p className="mt-1.5 font-mono text-[9px] leading-relaxed text-ink3/80">
+                Un administrador del laboratorio la aprueba o la rechaza.
+              </p>
+            </form>
+          ) : null}
+        </div>
       )}
 
       <h3 className="mb-2 mt-5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">

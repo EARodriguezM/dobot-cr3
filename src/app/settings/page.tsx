@@ -97,6 +97,23 @@ export default async function SettingsPage({
         <label className="flex items-start gap-2.5 border border-line bg-bg2 px-3 py-2.5">
           <input
             type="checkbox"
+            name="published"
+            defaultChecked={!(lab?.in_development ?? true)}
+            className="mt-0.5 accent-[var(--accent)]"
+          />
+          <span className="text-[13px] leading-snug text-ink2">
+            Publicado
+            <span className="block font-mono text-[10px] text-ink3">
+              Visible para cualquier integrante del semillero. Sin publicar,
+              solo el equipo del laboratorio puede entrar — útil mientras se
+              construye. No requiere que el hardware esté conectado.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2.5 border border-line bg-bg2 px-3 py-2.5">
+          <input
+            type="checkbox"
             name="in_maintenance"
             defaultChecked={lab?.in_maintenance ?? false}
             className="mt-0.5 accent-[var(--accent)]"
