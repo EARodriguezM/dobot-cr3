@@ -104,19 +104,63 @@ body::before {
   opacity: var(--grain);
 }
 
-/* Faint terracotta grid used on inverted "ink" surfaces. */
-.ink-grid {
-  position: relative;
+/* Component classes live in the `components` layer so Tailwind utilities —
+   which sit in the later `utilities` layer — always win. Unlayered rules beat
+   every layer, so an unlayered `.ink-grid { position: relative }` silently
+   overrode `fixed` on the sidebar and kept it in flow on small screens. */
+@layer components {
+  /* Faint terracotta grid used on inverted "ink" surfaces. */
+  .ink-grid {
+    position: relative;
+  }
+  .ink-grid::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(200, 66, 10, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 66, 10, 0.08) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  /* ── Hero control-loop diagram ─────────────────────────────────────────── */
+  /* CSS rather than SMIL so the reduced-motion rule below can stop it. */
+  .circuit-arc {
+    transform-origin: 200px 200px;
+    animation: circuit-sweep 12s linear infinite;
+  }
+  .circuit-core {
+    animation: circuit-pulse 2s ease-in-out infinite;
+  }
+
+  /* ── Brand mark (theme/surface-aware logo swap) ────────────────────────── */
+  .brand-swap {
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+    flex-shrink: 0;
+  }
+  .brand-swap img {
+    height: 100%;
+    width: auto;
+    display: none;
+  }
+  /* page-following surfaces flip with the theme */
+  .brand-page .bimg-ink { display: block; }
+  [data-theme="dark"] .brand-page .bimg-ink { display: none; }
+  [data-theme="dark"] .brand-page .bimg-cream { display: block; }
+  /* ink bands stay dark in both themes → always the cream logo */
+  .brand-onink .bimg-cream { display: block; }
 }
-.ink-grid::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(200, 66, 10, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(200, 66, 10, 0.08) 1px, transparent 1px);
-  background-size: 48px 48px;
-  pointer-events: none;
+
+@keyframes circuit-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes circuit-pulse {
+  0%, 100% { r: 5; opacity: 1; }
+  50%      { r: 8; opacity: 0.5; }
 }
 
 /* ── Accessibility: visible focus + reduced motion ───────────────────────── */
