@@ -8,6 +8,7 @@ import {
   SERVICES,
 } from "@/lib/robot/commands";
 import type { Telemetry } from "@/lib/robot/use-robot";
+import { Button, Panel, TabStrip } from "./ui";
 
 // The driving surface: power, speed, jogging, gripper and go-to.
 //
@@ -20,6 +21,11 @@ import type { Telemetry } from "@/lib/robot/use-robot";
 // The exceptions are the stops. Disable, jog-stop and the emergency stop stay
 // live for every operator regardless of the lease, because someone has to be
 // able to halt an arm they can see misbehaving.
+
+const JOG_MODES = [
+  { id: "joint", label: "Articular" },
+  { id: "cartesian", label: "Cartesiano" },
+] as const;
 
 interface Props {
   telemetry: Telemetry;
@@ -96,31 +102,27 @@ export const RobotControls = memo(function RobotControls({
   const axes = jogMode === "joint" ? JOG_JOINT_AXES : JOG_CARTESIAN_AXES;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Power */}
-      <section className="rounded-xl border border-line bg-card p-4">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Potencia
-        </h2>
+    <div className="flex flex-col gap-3">
+      <Panel title="Potencia">
         <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
+          <Button
+            variant="ok"
+            block
             disabled={!canDrive}
             onClick={() => void call(SERVICES.enable)}
-            className="border-[1.5px] border-ok px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ok transition hover:bg-ok hover:text-bg disabled:cursor-not-allowed disabled:opacity-40"
           >
             Habilitar
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="neutral"
+            block
             disabled={!isOperator}
             onClick={() => void call(SERVICES.disable)}
-            className="border-[1.5px] border-line px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-ink hover:bg-ink hover:text-bg disabled:cursor-not-allowed disabled:opacity-40"
           >
             Deshabilitar
-          </button>
+          </Button>
         </div>
-        <p className="mt-2 font-mono text-[10px] text-ink3">
+        <p className="mt-2.5 font-mono text-[10px] text-ink3">
           Estado:{" "}
           <span className={telemetry.enabled ? "text-ok" : "text-ink2"}>
             {telemetry.enabled == null
@@ -130,65 +132,46 @@ export const RobotControls = memo(function RobotControls({
                 : "deshabilitado"}
           </span>
         </p>
-        <button
-          type="button"
+        <Button
+          variant="quiet"
+          size="sm"
+          block
+          className="mt-2"
           disabled={!canDrive}
           onClick={() => void call(SERVICES.clearError)}
-          className="mt-2 w-full border border-line px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink3 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
         >
           Limpiar errores
-        </button>
-      </section>
+        </Button>
+      </Panel>
 
-      {/* Speed */}
-      <section className="rounded-xl border border-line bg-card p-4">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Velocidad
-        </h2>
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={1}
-            max={100}
-            value={speed}
-            disabled={!canDrive}
-            onChange={(e) => onSpeedChange(Number(e.target.value))}
-            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-line accent-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Factor de velocidad"
-          />
-          <span className="w-12 text-right font-mono text-[13px] tabular-nums text-ink">
+      <Panel
+        title="Velocidad"
+        aside={
+          <span className="font-mono text-[13px] tabular-nums text-ink">
             {speed}%
           </span>
-        </div>
-      </section>
+        }
+      >
+        <input
+          type="range"
+          min={1}
+          max={100}
+          value={speed}
+          disabled={!canDrive}
+          onChange={(e) => onSpeedChange(Number(e.target.value))}
+          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Factor de velocidad"
+        />
+      </Panel>
 
-      {/* Jog */}
-      <section className="rounded-xl border border-line bg-card p-4">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Movimiento manual
-        </h2>
-        <div
-          role="tablist"
-          aria-label="Modo de movimiento"
-          className="mb-3 flex overflow-hidden rounded-md border border-line"
-        >
-          {(["joint", "cartesian"] as const).map((mode) => (
-            <button
-              key={mode}
-              role="tab"
-              aria-selected={jogMode === mode}
-              type="button"
-              onClick={() => setJogMode(mode)}
-              className={`flex-1 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] transition ${
-                jogMode === mode
-                  ? "bg-accent text-white"
-                  : "text-ink3 hover:text-ink"
-              }`}
-            >
-              {mode === "joint" ? "Articular" : "Cartesiano"}
-            </button>
-          ))}
-        </div>
+      <Panel title="Movimiento manual">
+        <TabStrip
+          label="Modo de movimiento"
+          className="mb-3"
+          value={jogMode}
+          onChange={setJogMode}
+          items={JOG_MODES}
+        />
 
         <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
           {axes.map((axis) => (
@@ -221,46 +204,38 @@ export const RobotControls = memo(function RobotControls({
         <p className="mt-2 font-mono text-[9px] leading-relaxed text-ink3">
           Mantén pulsado para mover · suelta para detener.
         </p>
-      </section>
+      </Panel>
 
-      {/* Gripper */}
-      <section className="rounded-xl border border-line bg-card p-4">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Pinza
-        </h2>
+      <Panel title="Pinza">
         <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
+          <Button
+            variant="quiet"
+            block
             disabled={!canDrive}
             onClick={() => void call(SERVICES.gripper, { position: 0.0 })}
-            className="border-[1.5px] border-line px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             Abrir
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="quiet"
+            block
             disabled={!canDrive}
             onClick={() => void call(SERVICES.gripper, { position: 0.0142 })}
-            className="border-[1.5px] border-line px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
           >
             Cerrar
-          </button>
+          </Button>
         </div>
-      </section>
+      </Panel>
 
-      {/* Go to */}
-      <section className="rounded-xl border border-line bg-card p-4">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Ir a
-        </h2>
-        <button
-          type="button"
+      <Panel title="Ir a">
+        <Button
+          variant="accent"
+          block
           disabled={!canDrive}
           onClick={() => void call(SERVICES.home)}
-          className="w-full border-[1.5px] border-accent px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Inicio (todas las juntas a 0°)
-        </button>
+        </Button>
 
         <p className="mb-1.5 mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink3">
           Objetivo articular (grados)
@@ -283,19 +258,20 @@ export const RobotControls = memo(function RobotControls({
             />
           ))}
         </div>
-        <button
-          type="button"
+        <Button
+          variant="neutral"
+          block
+          className="mt-2"
           disabled={!canDrive}
           onClick={() =>
             void call(SERVICES.jointMove, {
               joints_deg: target.map((v) => Number(v) || 0),
             })
           }
-          className="mt-2 w-full border-[1.5px] border-line px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-ink hover:bg-ink hover:text-bg disabled:cursor-not-allowed disabled:opacity-40"
         >
           Mover a la posición
-        </button>
-      </section>
+        </Button>
+      </Panel>
     </div>
   );
 });

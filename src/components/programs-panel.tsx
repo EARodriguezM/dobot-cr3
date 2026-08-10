@@ -4,6 +4,7 @@ import { memo, useState } from "react";
 import { SERVICES } from "@/lib/robot/commands";
 import type { Program, ProgramStep } from "@/lib/lab-settings";
 import type { Telemetry } from "@/lib/robot/use-robot";
+import { Button } from "./ui";
 
 // Teach-pendant programs: capture the live pose as a waypoint, build an ordered
 // sequence, save it for the whole project, and run it.
@@ -81,13 +82,9 @@ export const ProgramsPanel = memo(function ProgramsPanel({
             Programas
           </h2>
           {canEdit ? (
-            <button
-              type="button"
-              onClick={addProgram}
-              className="rounded border border-line px-2 py-1 font-mono text-[10px] text-ink3 transition hover:border-accent hover:text-accent"
-            >
+            <Button variant="quiet" size="sm" onClick={addProgram}>
               + Nuevo
-            </button>
+            </Button>
           ) : null}
         </div>
         <ul className="list-none space-y-1">
@@ -127,10 +124,11 @@ export const ProgramsPanel = memo(function ProgramsPanel({
                 disabled={!canEdit}
                 onChange={(e) => mutate({ ...selected, name: e.target.value })}
                 aria-label="Nombre del programa"
-                className="min-w-0 flex-1 rounded border border-line bg-bg2 px-2 py-1.5 text-[13px] text-ink outline-none focus-visible:border-accent disabled:opacity-60"
+                className="min-w-0 flex-1 rounded-md border border-line bg-bg2 px-2 py-1.5 text-[13px] text-ink outline-none focus-visible:border-accent disabled:opacity-60"
               />
-              <button
-                type="button"
+              <Button
+                variant="accent"
+                size="sm"
                 disabled={!canDrive || running || selected.steps.length === 0}
                 onClick={() =>
                   void call(SERVICES.programRun, {
@@ -138,22 +136,23 @@ export const ProgramsPanel = memo(function ProgramsPanel({
                     steps: selected.steps,
                   })
                 }
-                className="border-[1.5px] border-accent px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ▶ Ejecutar
-              </button>
-              <button
-                type="button"
+              </Button>
+              {/* Stopping a running program is a stop: available to any
+                  operator, lease or no lease. */}
+              <Button
+                variant="estop"
+                size="sm"
                 disabled={!running}
                 onClick={() => void call(SERVICES.programStop)}
-                className="border-[1.5px] border-danger px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-danger transition hover:bg-danger hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 ■ Detener
-              </button>
+              </Button>
             </div>
 
             {running ? (
-              <p className="mb-2 border border-accent2 bg-accent2/10 px-2.5 py-1.5 font-mono text-[10px] text-ink2">
+              <p className="mb-2 rounded-md border border-ok bg-ok/10 px-2.5 py-1.5 font-mono text-[10px] text-ink2">
                 Ejecutando «{telemetry.program.programName || selected.name}» —
                 paso {telemetry.program.stepIndex + 1} de{" "}
                 {telemetry.program.stepCount}
@@ -202,8 +201,9 @@ export const ProgramsPanel = memo(function ProgramsPanel({
 
             {canEdit ? (
               <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line pt-2">
-                <button
-                  type="button"
+                <Button
+                  variant="quiet"
+                  size="sm"
                   disabled={telemetry.jointsDeg.length === 0}
                   onClick={() =>
                     addStep({
@@ -211,40 +211,40 @@ export const ProgramsPanel = memo(function ProgramsPanel({
                       joints: telemetry.jointsDeg.slice(0, 6),
                     })
                   }
-                  className="rounded border border-line px-2.5 py-1.5 font-mono text-[10px] text-ink2 transition hover:border-accent hover:text-accent disabled:opacity-40"
                 >
                   + Capturar punto
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={() => addStep({ kind: "gripper", position: 0 })}
-                  className="rounded border border-line px-2.5 py-1.5 font-mono text-[10px] text-ink2 transition hover:border-accent hover:text-accent"
                 >
                   + Abrir pinza
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={() => addStep({ kind: "gripper", position: 0.0142 })}
-                  className="rounded border border-line px-2.5 py-1.5 font-mono text-[10px] text-ink2 transition hover:border-accent hover:text-accent"
                 >
                   + Cerrar pinza
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={() => addStep({ kind: "wait", seconds: 1 })}
-                  className="rounded border border-line px-2.5 py-1.5 font-mono text-[10px] text-ink2 transition hover:border-accent hover:text-accent"
                 >
                   + Esperar 1s
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="ml-auto"
                   onClick={() =>
                     onSave(programs.filter((p) => p.id !== selected.id))
                   }
-                  className="ml-auto rounded border border-line px-2.5 py-1.5 font-mono text-[10px] text-ink3 transition hover:border-danger hover:text-danger"
                 >
                   Eliminar programa
-                </button>
+                </Button>
               </div>
             ) : null}
           </>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
+import { Button } from "./ui";
 
 // Application chrome: icon rail, top bar and an always-reachable stop.
 //
@@ -202,14 +203,14 @@ export function LabShell({
           <ThemeToggle />
 
           {isOperator ? (
-            <button
-              type="button"
+            <Button
+              variant="estop"
+              size="sm"
               onClick={onEstop}
               title="Paro de emergencia — no requiere tener el control"
-              className="flex items-center gap-1.5 border-2 border-danger bg-danger/10 px-2.5 py-1.5 font-head text-xs font-bold uppercase tracking-[0.06em] text-danger transition hover:bg-danger hover:text-white"
             >
               ■<span className="hidden sm:inline">Paro</span>
-            </button>
+            </Button>
           ) : null}
 
           {userName ? (

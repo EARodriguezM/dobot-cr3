@@ -3,7 +3,7 @@
 import { memo, useActionState } from "react";
 import type { ControlState, ControlUser } from "@/lib/control/store";
 import { IDLE, type ActionResult } from "@/lib/action-result";
-import { Button } from "./ui";
+import { Button, Panel, RoleTag } from "./ui";
 
 // Who is here and who is driving.
 //
@@ -58,15 +58,11 @@ export const SessionPanel = memo(function SessionPanel({
   const presence = state?.presence ?? [];
 
   return (
-    <section className="rounded-xl border border-line bg-card p-4">
-      <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-        Control
-      </h2>
-
+    <Panel title="Control">
       <p
         className={`mb-3 border-l-2 py-1 pl-2.5 font-mono text-[11px] leading-relaxed ${
           iAmHolder
-            ? "border-accent2 text-ink2"
+            ? "border-ok text-ink2"
             : someoneElseDriving
               ? "border-warn text-ink2"
               : "border-line text-ink3"
@@ -103,20 +99,20 @@ export const SessionPanel = memo(function SessionPanel({
                     <span className="min-w-0 flex-1 truncate text-[12px] text-ink">
                       {person.name}
                     </span>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ok"
+                      size="sm"
                       onClick={() => onRespondToHandover(person.id, true)}
-                      className="border border-ok px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ok transition hover:bg-ok hover:text-bg"
                     >
                       Ceder
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       onClick={() => onRespondToHandover(person.id, false)}
-                      className="border border-line px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink3 transition hover:border-danger hover:text-danger"
                     >
                       No
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -124,43 +120,36 @@ export const SessionPanel = memo(function SessionPanel({
           ) : null}
 
           {iAmHolder ? (
-            <button
-              type="button"
-              onClick={onRelease}
-              className="border-[1.5px] border-line px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-ink hover:bg-ink hover:text-bg"
-            >
+            <Button variant="neutral" block onClick={onRelease}>
               Liberar control
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="accent"
+              block
               onClick={onTake}
               disabled={waiting && queuePosition >= 0}
-              className="border-[1.5px] border-accent px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {waiting && queuePosition >= 0 ? "En cola…" : "Tomar control"}
-            </button>
+            </Button>
           )}
 
           {someoneElseDriving ? (
-            <button
-              type="button"
+            <Button
+              variant="quiet"
+              size="sm"
+              block
               onClick={onRequestHandover}
               disabled={awaitingHandover}
-              className="border-[1.5px] border-line px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
             >
               {awaitingHandover ? "Esperando respuesta…" : "Pedir el control"}
-            </button>
+            </Button>
           ) : null}
 
           {someoneElseDriving && canAdmin ? (
-            <button
-              type="button"
-              onClick={onForce}
-              className="border border-warn px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-warn transition hover:bg-warn hover:text-bg"
-            >
+            <Button variant="warn" size="sm" block onClick={onForce}>
               Forzar control
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : (
@@ -192,9 +181,7 @@ export const SessionPanel = memo(function SessionPanel({
               ) : null}
             </span>
             {holder?.id === person.id ? (
-              <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-accent">
-                al mando
-              </span>
+              <RoleTag tone="accent">al mando</RoleTag>
             ) : null}
           </li>
         ))}
@@ -204,7 +191,7 @@ export const SessionPanel = memo(function SessionPanel({
           </li>
         ) : null}
       </ul>
-    </section>
+    </Panel>
   );
 });
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { LabClosure } from "@/lib/lab";
+import { buttonClass } from "./ui";
 
 // What an ordinary user sees when the lab is not open to them.
 //
@@ -52,7 +53,7 @@ export function LabClosed({
       </p>
       <Link
         href="https://primbiolab.org/dashboard"
-        className="mt-8 border-[1.5px] border-line px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent"
+        className={buttonClass({ variant: "quiet", size: "lg", className: "mt-8" })}
       >
         Volver al panel
       </Link>

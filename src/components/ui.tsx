@@ -16,32 +16,83 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 export function Panel({
   title,
   aside,
+  divided = false,
+  label,
   className = "",
-  bodyClassName = "",
+  bodyClassName = "p-4",
   children,
 }: {
   /** Small uppercase eyebrow at the top of the panel. */
   title?: ReactNode;
   /** Secondary content on the title row — a count, a unit toggle. */
   aside?: ReactNode;
+  /** Rule under the header, for panels whose body scrolls beneath it. */
+  divided?: boolean;
+  /** Accessible name when the visible title is not descriptive enough. */
+  label?: string;
   className?: string;
   bodyClassName?: string;
   children: ReactNode;
 }) {
   return (
     <section
+      aria-label={label}
       className={`flex min-h-0 flex-col rounded-xl border border-line bg-card ${className}`}
     >
       {title ? (
-        <header className="flex items-center justify-between gap-2 px-4 pt-3.5">
+        <header
+          className={`flex shrink-0 items-center justify-between gap-2 px-4 ${
+            divided ? "border-b border-line py-2.5" : "pb-1 pt-3.5"
+          }`}
+        >
           <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
             {title}
           </h2>
           {aside}
         </header>
       ) : null}
-      <div className={`min-h-0 p-4 ${bodyClassName}`}>{children}</div>
+      <div className={`min-h-0 ${bodyClassName}`}>{children}</div>
     </section>
+  );
+}
+
+/** Segmented control. Used for the main stage and for the jog mode. */
+export function TabStrip<T extends string>({
+  label,
+  items,
+  value,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  items: readonly { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className={`flex overflow-hidden rounded-md border border-line ${className}`}
+    >
+      {items.map((item) => (
+        <button
+          key={item.id}
+          role="tab"
+          type="button"
+          aria-selected={value === item.id}
+          onClick={() => onChange(item.id)}
+          className={`flex-1 px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] transition ${
+            value === item.id
+              ? "bg-accent text-white"
+              : "text-ink3 hover:bg-bg2 hover:text-ink"
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -71,17 +122,36 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "border-2 border-danger bg-danger/10 font-head font-bold text-danger hover:bg-danger hover:text-white",
 };
 
+// Vertical padding is set for touch first: the lab is driven from tablets, and
+// a 32 px control is not something to reach for while an arm is moving.
 const SIZES: Record<ButtonSize, string> = {
   sm: "px-3 py-1.5 text-[10px] tracking-[0.1em]",
-  md: "px-4 py-2 text-[11px] tracking-[0.1em]",
-  lg: "px-5 py-2.5 text-[11px] tracking-[0.1em]",
+  md: "px-4 py-2.5 text-[11px] tracking-[0.1em]",
+  lg: "px-5 py-3 text-[11px] tracking-[0.1em]",
 };
 
-export function Button({
+/** The button skin on its own, for links that have to look like buttons. */
+export function buttonClass({
   variant = "neutral",
   size = "md",
   block = false,
   className = "",
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  block?: boolean;
+  className?: string;
+} = {}): string {
+  return `inline-flex items-center justify-center gap-1.5 rounded-md font-mono uppercase transition disabled:cursor-not-allowed disabled:opacity-50 ${
+    VARIANTS[variant]
+  } ${SIZES[size]} ${block ? "w-full" : ""} ${className}`;
+}
+
+export function Button({
+  variant,
+  size,
+  block,
+  className,
   type = "button",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -94,9 +164,7 @@ export function Button({
     <button
       {...props}
       type={type}
-      className={`inline-flex items-center justify-center gap-1.5 font-mono uppercase transition disabled:cursor-not-allowed disabled:opacity-50 ${
-        VARIANTS[variant]
-      } ${SIZES[size]} ${block ? "w-full" : ""} ${className}`}
+      className={buttonClass({ variant, size, block, className })}
     />
   );
 }

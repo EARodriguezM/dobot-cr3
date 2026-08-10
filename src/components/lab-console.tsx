@@ -14,6 +14,7 @@ import { useRobot } from "@/lib/robot/use-robot";
 import type { WallLayout } from "@/lib/camera-layout";
 import type { Program } from "@/lib/lab-settings";
 import type { ActionResult } from "@/lib/action-result";
+import { Banner, TabStrip } from "./ui";
 
 // The operating surface. One socket to the hardware, one lease, three views.
 //
@@ -223,65 +224,46 @@ export function LabConsole({
       <div className="flex flex-col gap-3">
         {/* Banners */}
         {estopVisible ? (
-          <p
-            role="alert"
-            className="border border-danger bg-danger/10 px-4 py-2.5 font-mono text-xs text-danger"
-          >
+          <Banner tone="danger" role="alert">
             ⚠ PARO DE EMERGENCIA activado por{" "}
             {control.state?.estopBy ?? "un operador"}.
-          </p>
+          </Banner>
         ) : null}
 
         {robot.link === "unauthorized" ? (
-          <p className="border border-warn bg-warn/10 px-4 py-2.5 font-mono text-xs text-warn">
+          <Banner tone="warn">
             El laboratorio rechazó tu sesión. Pide a un administrador del
             proyecto que te asigne un rol en este laboratorio.
-          </p>
+          </Banner>
         ) : null}
 
         {robot.link === "offline" ? (
-          <p className="border border-line bg-bg2 px-4 py-2.5 font-mono text-xs text-ink3">
+          <Banner tone="neutral">
             Sin conexión con el computador del laboratorio — modo solo
             observación. Reintentando…
-          </p>
+          </Banner>
         ) : null}
 
         {robot.lastDenial ? (
-          <p
-            role="status"
-            className="border border-warn bg-warn/10 px-4 py-2.5 font-mono text-xs text-warn"
-          >
+          <Banner tone="warn" role="status">
             {robot.lastDenial}
-          </p>
+          </Banner>
         ) : null}
 
-        {/* Three columns on desktop; on a phone the stage comes first so the
-            video is never pushed below the fold. */}
-        <div className="grid min-w-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
+        {/* One column on a phone with the stage first, so the video is never
+            pushed below the fold; two from a tablet, with the stage spanning
+            the top; three once there is room for the stage to sit between the
+            controls and the session. */}
+        <div className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[290px_minmax(0,1fr)_310px]">
           {/* Stage */}
-          <div className="flex min-h-0 min-w-0 flex-col gap-2 xl:order-2">
-            <div
-              role="tablist"
-              aria-label="Vista principal"
-              className="flex w-full overflow-hidden rounded-md border border-line sm:w-auto sm:self-start"
-            >
-              {STAGES.map((item) => (
-                <button
-                  key={item.id}
-                  role="tab"
-                  aria-selected={stage === item.id}
-                  type="button"
-                  onClick={() => openStage(item.id)}
-                  className={`flex-1 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] transition sm:flex-none ${
-                    stage === item.id
-                      ? "bg-accent text-white"
-                      : "text-ink3 hover:text-ink"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex min-h-0 min-w-0 flex-col gap-2 lg:col-span-2 xl:order-2 xl:col-span-1">
+            <TabStrip
+              label="Vista principal"
+              items={STAGES}
+              value={stage}
+              onChange={openStage}
+              className="w-full sm:w-auto sm:self-start"
+            />
 
             <div className="flex min-h-64 flex-col xl:min-h-[28rem]">
               <Stage active={stage === "cameras"}>
@@ -316,7 +298,7 @@ export function LabConsole({
           </div>
 
           {/* Controls */}
-          <div className="min-w-0 xl:order-1">
+          <div className="min-w-0 lg:order-2 xl:order-1">
             <RobotControls
               telemetry={robot.telemetry}
               canDrive={canDrive}
@@ -326,7 +308,7 @@ export function LabConsole({
           </div>
 
           {/* Session · telemetry · activity */}
-          <div className="flex min-w-0 flex-col gap-3 xl:order-3">
+          <div className="flex min-w-0 flex-col gap-3 lg:order-3 xl:order-3">
             <SessionPanel
               state={control.state}
               userId={userId}

@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { JOINT_LABELS, POSE_AXES } from "@/lib/robot/commands";
 import type { Telemetry } from "@/lib/robot/use-robot";
+import { Banner, Panel } from "./ui";
 
 // Live joint angles and TCP pose. Every viewer sees exactly this, whether or
 // not they hold control: it is the ground truth about where the arm actually
@@ -30,14 +31,14 @@ export const TelemetryReadout = memo(function TelemetryReadout({
   const suffix = units === "deg" ? "°" : "";
 
   return (
-    <section className="rounded-xl border border-line bg-card p-4">
-      <h2 className="mb-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-        Telemetría
-        <span className="font-mono text-[9px] tracking-[0.1em] text-ink3">
+    <Panel
+      title="Telemetría"
+      aside={
+        <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink3">
           {units === "deg" ? "grados" : "radianes"}
         </span>
-      </h2>
-
+      }
+    >
       <div className="grid grid-cols-3 gap-1.5">
         {JOINT_LABELS.map((label, i) => (
           <Cell
@@ -64,10 +65,10 @@ export const TelemetryReadout = memo(function TelemetryReadout({
       </div>
 
       {telemetry.error ? (
-        <p className="mt-3 border border-danger bg-danger/10 px-2.5 py-1.5 font-mono text-[10px] leading-relaxed text-danger">
+        <Banner tone="danger" role="alert" className="mt-3">
           {telemetry.error}
-        </p>
+        </Banner>
       ) : null}
-    </section>
+    </Panel>
   );
 });

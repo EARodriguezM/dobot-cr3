@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { LabClosed } from "@/components/lab-closed";
+import { Banner } from "@/components/ui";
 import { requestPromotionAction } from "./admin/users/requests";
 import { DEFAULT_LAYOUT, type WallLayout } from "@/lib/camera-layout";
 import { LabConsole } from "@/components/lab-console";
@@ -38,20 +40,21 @@ export default async function LabPage() {
   return (
     <>
       {ctx.closure ? (
-        <p className="border-b border-warn bg-warn/10 px-4 py-2 font-mono text-xs text-warn">
+        <Banner tone="warn" className="rounded-none border-x-0 border-t-0 py-2">
           {ctx.closure === "maintenance"
             ? "En mantenimiento — solo el equipo del laboratorio puede entrar."
             : "Sin publicar — solo el equipo del laboratorio puede entrar."}{" "}
-          <a href="/settings" className="underline">
+          {/* A Link so it opens over the console rather than replacing it. */}
+          <Link href="/settings" className="underline">
             Cambiar en Ajustes
-          </a>
-        </p>
+          </Link>
+        </Banner>
       ) : null}
       {ctx.configured && !ctx.lab ? (
-        <p className="border-b border-warn bg-warn/10 px-4 py-2 font-mono text-xs text-warn">
+        <Banner tone="warn" className="rounded-none border-x-0 border-t-0 py-2">
           Este laboratorio ({getLabSlug()}) aún no está registrado en la
           plataforma; funcionando en modo demostración.
-        </p>
+        </Banner>
       ) : null}
 
       <LabConsole

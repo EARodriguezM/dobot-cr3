@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { describeAction } from "@/lib/robot/commands";
+import { Panel } from "./ui";
 import type { ActivityEvent } from "@/lib/robot/protocol";
 
 // What the other people in the lab are doing.
@@ -32,20 +33,19 @@ export const ActivityFeed = memo(function ActivityFeed({
   className?: string;
 }) {
   return (
-    <section
-      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-card ${className}`}
-      aria-label="Actividad del laboratorio"
-    >
-      <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
-        <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-          Actividad
-        </h2>
+    <Panel
+      title="Actividad"
+      label="Actividad del laboratorio"
+      divided
+      aside={
         <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink3">
           comandos enviados
         </span>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      }
+      className={`overflow-hidden ${className}`}
+      bodyClassName="flex-1 overflow-y-auto"
+    >
+      <div>
         {activity.length === 0 ? (
           <p className="px-4 py-6 text-center font-mono text-[11px] leading-relaxed text-ink3">
             Aún no hay comandos.
@@ -87,6 +87,6 @@ export const ActivityFeed = memo(function ActivityFeed({
           </ul>
         )}
       </div>
-    </section>
+    </Panel>
   );
 });
