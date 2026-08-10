@@ -1,7 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useActionState } from "react";
 import type { ControlState, ControlUser } from "@/lib/control/store";
+import { IDLE, type ActionResult } from "@/lib/action-result";
+import { Button } from "./ui";
 
 // Who is here and who is driving.
 //
@@ -45,7 +47,7 @@ export const SessionPanel = memo(function SessionPanel({
   onForce: () => void;
   onRelease: () => void;
   /** Server action; absent when there is nothing to ask for. */
-  onRequestPromotion?: () => Promise<void>;
+  onRequestPromotion?: (previous: ActionResult | null) => Promise<ActionResult>;
   onRequestHandover: () => void;
   onRespondToHandover: (userId: string, accept: boolean) => void;
   handoverRequests: ControlUser[];
@@ -168,17 +170,7 @@ export const SessionPanel = memo(function SessionPanel({
             operador, pero no puedes mover el robot.
           </p>
           {onRequestPromotion ? (
-            <form action={onRequestPromotion}>
-              <button
-                type="submit"
-                className="w-full border-[1.5px] border-line px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink2 transition hover:border-accent hover:text-accent"
-              >
-                Solicitar ser operador
-              </button>
-              <p className="mt-1.5 font-mono text-[9px] leading-relaxed text-ink3/80">
-                Un administrador del laboratorio la aprueba o la rechaza.
-              </p>
-            </form>
+            <PromotionRequest action={onRequestPromotion} />
           ) : null}
         </div>
       )}
@@ -215,5 +207,44 @@ export const SessionPanel = memo(function SessionPanel({
     </section>
   );
 });
+
+// A viewer asking to be promoted. The answer arrives here, in the panel they
+// asked from: this used to redirect to the admin roster, which a viewer is not
+// allowed to open, so the request appeared to do nothing at all.
+function PromotionRequest({
+  action,
+}: {
+  action: (previous: ActionResult | null) => Promise<ActionResult>;
+}) {
+  const [result, formAction, pending] = useActionState(action, IDLE);
+
+  if (result?.ok) {
+    return (
+      <p
+        role="status"
+        className="rounded-md border border-ok bg-ok/10 px-3 py-2 font-mono text-[10px] leading-relaxed text-ok"
+      >
+        Solicitud enviada. Un administrador del laboratorio la revisará.
+      </p>
+    );
+  }
+
+  return (
+    <form action={formAction}>
+      <Button type="submit" variant="quiet" size="sm" block disabled={pending}>
+        {pending ? "Enviando…" : "Solicitar ser operador"}
+      </Button>
+      <p
+        className={`mt-1.5 font-mono text-[9px] leading-relaxed ${
+          result ? "text-danger" : "text-ink3/80"
+        }`}
+      >
+        {result
+          ? "No se pudo enviar la solicitud. Inténtalo de nuevo."
+          : "Un administrador del laboratorio la aprueba o la rechaza."}
+      </p>
+    </form>
+  );
+}
 
 export { ROLE_LABEL };

@@ -13,6 +13,7 @@ import { useControl } from "@/lib/control/use-control";
 import { useRobot } from "@/lib/robot/use-robot";
 import type { WallLayout } from "@/lib/camera-layout";
 import type { Program } from "@/lib/lab-settings";
+import type { ActionResult } from "@/lib/action-result";
 
 // The operating surface. One socket to the hardware, one lease, three views.
 //
@@ -59,6 +60,30 @@ function Stage({ active, children }: { active: boolean; children: React.ReactNod
   );
 }
 
+/**
+ * True while `at` is younger than `ttl`, false once it has aged out.
+ *
+ * One timer, armed for exactly the remaining life of the flag, and one render
+ * when it fires. The emergency-stop banner used to be driven by a 500 ms
+ * interval at the root of the console, which re-rendered every panel, camera
+ * tile and 3D frame below it twice a second for the entire session — for a
+ * banner that is almost never on screen.
+ */
+function useExpiringFlag(at: number | null, ttl: number): boolean {
+  const [expired, setExpired] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (at == null) return;
+    const timer = setTimeout(
+      () => setExpired(at),
+      Math.max(0, ttl - (Date.now() - at)),
+    );
+    return () => clearTimeout(timer);
+  }, [at, ttl]);
+
+  return at != null && expired !== at;
+}
+
 export function LabConsole({
   controlUrl,
   labName,
@@ -86,7 +111,7 @@ export function LabConsole({
   initialLayout: WallLayout;
   savePrograms: (programs: Program[]) => Promise<boolean>;
   saveLayout: (layout: WallLayout) => Promise<boolean>;
-  requestPromotion?: () => Promise<void>;
+  requestPromotion?: (previous: ActionResult | null) => Promise<ActionResult>;
 }) {
   const [stage, setStage] = useState<Stage>("cameras");
   const [programs, setPrograms] = useState<Program[]>(initialPrograms);
@@ -132,35 +157,23 @@ export function LabConsole({
     robot.telemetry.connected,
   );
 
-  // The e-stop banner ages out on its own. One timer armed for the remaining
-  // life of the banner, not a clock ticking behind the whole console: an
-  // interval here re-renders every panel, camera tile and 3D frame below it for
-  // as long as the page is open, which is what made the interface feel like it
-  // was continuously reloading.
-  const estopAt = control.state?.estopAt ?? null;
-  const [estopVisible, setEstopVisible] = useState(false);
-  useEffect(() => {
-    if (estopAt == null) {
-      setEstopVisible(false);
-      return;
-    }
-    const remaining = ESTOP_BANNER_MS - (Date.now() - estopAt);
-    setEstopVisible(remaining > 0);
-    if (remaining <= 0) return;
-    const timer = setTimeout(() => setEstopVisible(false), remaining);
-    return () => clearTimeout(timer);
-  }, [estopAt]);
+  const estopVisible = useExpiringFlag(
+    control.state?.estopAt ?? null,
+    ESTOP_BANNER_MS,
+  );
 
   // The meshes are expensive to fetch but also expensive to keep resident on a
   // phone, so the model is dropped only after the tab has been left alone for
-  // a while — long enough that flipping between views costs nothing.
+  // a while — long enough that flipping between views costs nothing. Mounting
+  // is caused by the user opening the tab, so it belongs in the handler.
   const [modelMounted, setModelMounted] = useState(false);
+  const openStage = useCallback((next: Stage) => {
+    setStage(next);
+    if (next === "model") setModelMounted(true);
+  }, []);
+
   useEffect(() => {
-    if (stage === "model") {
-      setModelMounted(true);
-      return;
-    }
-    if (!modelMounted) return;
+    if (stage === "model" || !modelMounted) return;
     const timer = setTimeout(() => setModelMounted(false), MODEL_IDLE_MS);
     return () => clearTimeout(timer);
   }, [stage, modelMounted]);
@@ -258,7 +271,7 @@ export function LabConsole({
                   role="tab"
                   aria-selected={stage === item.id}
                   type="button"
-                  onClick={() => setStage(item.id)}
+                  onClick={() => openStage(item.id)}
                   className={`flex-1 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.1em] transition sm:flex-none ${
                     stage === item.id
                       ? "bg-accent text-white"

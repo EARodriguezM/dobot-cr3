@@ -36,17 +36,29 @@ export const metadata: Metadata = {
 // Typed explicitly rather than with Next's generated `LayoutProps`, which only
 // exists after a build has written .next/types — a clean checkout (CI) would
 // not typecheck.
+//
+// `modal` is a parallel slot. Admin routes reached from inside the app are
+// intercepted into it and render over whatever is in `children`, which keeps
+// its state — that is what lets settings and the team roster open without
+// tearing down a live teleoperation session. See app/@modal.
 export default function RootLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode;
+  // Optional so the explicit typing here stays compatible with the props Next
+  // generates for the route tree, which a clean checkout has not written yet.
+  modal?: React.ReactNode;
 }) {
   return (
     <html
       lang="es"
       className={`${syne.variable} ${ibmPlexMono.variable} ${lora.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {modal}
+      </body>
     </html>
   );
 }

@@ -1,52 +1,36 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getLabContext } from "@/lib/lab";
+import type { ActionResult } from "@/lib/action-result";
 
-// Promotion requests, both halves: asking and deciding.
+// A viewer asking to be promoted to operator, from the console itself.
 //
-// Neither action checks permissions here. Both go through SECURITY DEFINER
-// functions that do their own authorization and write the membership row in
-// the same breath as the status change, so a request cannot be marked approved
-// without the role actually moving — and a compromised session cannot forge
-// either step, because `role_requests` has no insert or update grant at all.
+// No permission check here: the request goes through a SECURITY DEFINER
+// function that does its own authorization, and `role_requests` has no insert
+// grant at all, so a compromised session cannot forge one.
+//
+// The answer comes back to the console rather than navigating anywhere. It
+// used to redirect to /admin/users, which the asker — a viewer — is not
+// allowed to open, so the one person who needed the confirmation was bounced
+// straight back to the console without it.
 
-export async function requestPromotionAction() {
+export async function requestPromotionAction(): Promise<ActionResult> {
   const ctx = await getLabContext();
-  if (!ctx.configured || !ctx.user || !ctx.projectId) redirect("/");
+  if (!ctx.configured || !ctx.user || !ctx.projectId) {
+    return { ok: false, code: "err" };
+  }
 
   const supabase = await createClient();
-  if (!supabase) redirect("/");
+  if (!supabase) return { ok: false, code: "err" };
 
   const { error } = await supabase.rpc("request_role_promotion", {
     p_project_id: ctx.projectId,
     p_note: null,
   });
+  if (error) return { ok: false, code: "reqerr" };
 
   revalidatePath("/admin/users");
-  revalidatePath("/");
-  redirect(error ? "/admin/users?m=reqerr" : "/admin/users?m=requested");
-}
-
-export async function decideRequestAction(formData: FormData) {
-  const ctx = await getLabContext();
-  if (!ctx.configured || !ctx.user) redirect("/");
-
-  const requestId = String(formData.get("request_id") ?? "");
-  const approve = String(formData.get("decision") ?? "") === "approve";
-  if (!requestId) redirect("/admin/users?m=err");
-
-  const supabase = await createClient();
-  if (!supabase) redirect("/");
-
-  const { error } = await supabase.rpc("decide_role_request", {
-    p_request_id: requestId,
-    p_approve: approve,
-    p_note: null,
-  });
-
-  revalidatePath("/admin/users");
-  redirect(error ? "/admin/users?m=denied" : "/admin/users?m=ok");
+  return { ok: true, code: "requested" };
 }

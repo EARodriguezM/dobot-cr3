@@ -1,11 +1,17 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getLabContext } from "@/lib/lab";
+import type { ActionResult } from "@/lib/action-result";
 
 // Same contract as the hub's admin actions: RLS is the gate, mutations
 // inspect their result (0 rows = denied), `owner` is never grantable.
+//
+// One entry point rather than four. The roster is a list of forms — add,
+// change a role, remove, decide a request — and a single dispatcher lets the
+// whole panel share one `useActionState`, so whichever form was submitted is
+// the one that reports back.
 
 const GRANTABLE_ROLES = ["admin", "operator", "viewer"] as const;
 
@@ -18,26 +24,50 @@ function str(form: FormData, key: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function done(result: string): never {
-  revalidatePath("/admin/users");
-  redirect(`/admin/users?m=${result}`);
+function fail(code: string): ActionResult {
+  return { ok: false, code };
 }
 
-export async function addMemberAction(form: FormData): Promise<void> {
+function done(code = "ok"): ActionResult {
+  revalidatePath("/admin/users");
+  return { ok: true, code };
+}
+
+export async function manageTeamAction(
+  _previous: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
+  switch (str(form, "intent")) {
+    case "add":
+      return addMember(form);
+    case "role":
+      return setMemberRole(form);
+    case "remove":
+      return removeMember(form);
+    case "approve":
+      return decideRequest(form, true);
+    case "reject":
+      return decideRequest(form, false);
+    default:
+      return fail("err");
+  }
+}
+
+async function addMember(form: FormData): Promise<ActionResult> {
   const supabase = await createClient();
-  if (!supabase) done("err");
+  if (!supabase) return fail("err");
 
   const projectId = str(form, "project_id");
   const email = str(form, "email").toLowerCase();
   const role = str(form, "role");
-  if (!projectId || !email || !isGrantableRole(role)) done("err");
+  if (!projectId || !email || !isGrantableRole(role)) return fail("err");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("id")
     .eq("email", email)
     .maybeSingle();
-  if (!profile) done("nouser");
+  if (!profile) return fail("nouser");
 
   const {
     data: { user },
@@ -49,18 +79,18 @@ export async function addMemberAction(form: FormData): Promise<void> {
     role,
     added_by: user?.id ?? null,
   });
-  if (error) done(error.code === "23505" ? "dup" : "denied");
-  done("ok");
+  if (error) return fail(error.code === "23505" ? "dup" : "denied");
+  return done("added");
 }
 
-export async function setMemberRoleAction(form: FormData): Promise<void> {
+async function setMemberRole(form: FormData): Promise<ActionResult> {
   const supabase = await createClient();
-  if (!supabase) done("err");
+  if (!supabase) return fail("err");
 
   const projectId = str(form, "project_id");
   const userId = str(form, "user_id");
   const role = str(form, "role");
-  if (!projectId || !userId || !isGrantableRole(role)) done("err");
+  if (!projectId || !userId || !isGrantableRole(role)) return fail("err");
 
   const { data, error } = await supabase
     .from("project_members")
@@ -68,17 +98,17 @@ export async function setMemberRoleAction(form: FormData): Promise<void> {
     .eq("project_id", projectId)
     .eq("user_id", userId)
     .select("user_id");
-  if (error || !data || data.length === 0) done("denied");
-  done("ok");
+  if (error || !data || data.length === 0) return fail("denied");
+  return done();
 }
 
-export async function removeMemberAction(form: FormData): Promise<void> {
+async function removeMember(form: FormData): Promise<ActionResult> {
   const supabase = await createClient();
-  if (!supabase) done("err");
+  if (!supabase) return fail("err");
 
   const projectId = str(form, "project_id");
   const userId = str(form, "user_id");
-  if (!projectId || !userId) done("err");
+  if (!projectId || !userId) return fail("err");
 
   const { data, error } = await supabase
     .from("project_members")
@@ -86,6 +116,34 @@ export async function removeMemberAction(form: FormData): Promise<void> {
     .eq("project_id", projectId)
     .eq("user_id", userId)
     .select("user_id");
-  if (error || !data || data.length === 0) done("denied");
-  done("ok");
+  if (error || !data || data.length === 0) return fail("denied");
+  return done("removed");
+}
+
+// Promotion requests go through a SECURITY DEFINER function that does its own
+// authorization and writes the membership row in the same breath as the status
+// change, so a request cannot be marked approved without the role actually
+// moving — `role_requests` has no update grant at all.
+async function decideRequest(
+  form: FormData,
+  approve: boolean,
+): Promise<ActionResult> {
+  const ctx = await getLabContext();
+  if (!ctx.configured || !ctx.user) return fail("err");
+
+  const requestId = str(form, "request_id");
+  if (!requestId) return fail("err");
+
+  const supabase = await createClient();
+  if (!supabase) return fail("err");
+
+  const { error } = await supabase.rpc("decide_role_request", {
+    p_request_id: requestId,
+    p_approve: approve,
+    p_note: null,
+  });
+  if (error) return fail("denied");
+
+  revalidatePath("/");
+  return done(approve ? "approved" : "rejected");
 }
