@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { SERVICES } from "@/lib/robot/commands";
 import type { Program, ProgramStep } from "@/lib/lab-settings";
 import type { Telemetry } from "@/lib/robot/use-robot";
@@ -33,7 +33,7 @@ function stepLabel(step: ProgramStep, index: number): string {
   }
 }
 
-export function ProgramsPanel({
+export const ProgramsPanel = memo(function ProgramsPanel({
   programs,
   telemetry,
   canDrive,
@@ -257,4 +257,4 @@ export function ProgramsPanel({
       </div>
     </div>
   );
-}
+});

@@ -40,6 +40,25 @@ const STAGES: { id: Stage; label: string }[] = [
   { id: "programs", label: "Programas" },
 ];
 
+/** How long the emergency-stop banner stays up after the stop. */
+const ESTOP_BANNER_MS = 30_000;
+
+/** Grace period before an idle 3D view gives its GPU memory back. */
+const MODEL_IDLE_MS = 120_000;
+
+// Every stage stays mounted once it has been opened, and inactive ones are
+// hidden with CSS rather than unmounted. Switching tabs must not renegotiate
+// the WebRTC tiles or re-download the arm's meshes — a teleoperation session is
+// a live thing, and tearing it down to look at a different view of it is the
+// one thing the interface must never do.
+function Stage({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <div className={active ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+      {children}
+    </div>
+  );
+}
+
 export function LabConsole({
   controlUrl,
   labName,
@@ -113,19 +132,68 @@ export function LabConsole({
     robot.telemetry.connected,
   );
 
-  // The e-stop banner ages out on its own, so the component needs a clock of
-  // its own: reading Date.now() during render would make the output depend on
-  // when React happened to re-render.
-  const [now, setNow] = useState(0);
+  // The e-stop banner ages out on its own. One timer armed for the remaining
+  // life of the banner, not a clock ticking behind the whole console: an
+  // interval here re-renders every panel, camera tile and 3D frame below it for
+  // as long as the page is open, which is what made the interface feel like it
+  // was continuously reloading.
+  const estopAt = control.state?.estopAt ?? null;
+  const [estopVisible, setEstopVisible] = useState(false);
   useEffect(() => {
-    const tick = () => setNow(Date.now());
-    tick();
-    const timer = setInterval(tick, 500);
-    return () => clearInterval(timer);
-  }, []);
+    if (estopAt == null) {
+      setEstopVisible(false);
+      return;
+    }
+    const remaining = ESTOP_BANNER_MS - (Date.now() - estopAt);
+    setEstopVisible(remaining > 0);
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => setEstopVisible(false), remaining);
+    return () => clearTimeout(timer);
+  }, [estopAt]);
 
-  const recentEstop =
-    control.state?.estopAt != null && now - control.state.estopAt < 30_000;
+  // The meshes are expensive to fetch but also expensive to keep resident on a
+  // phone, so the model is dropped only after the tab has been left alone for
+  // a while — long enough that flipping between views costs nothing.
+  const [modelMounted, setModelMounted] = useState(false);
+  useEffect(() => {
+    if (stage === "model") {
+      setModelMounted(true);
+      return;
+    }
+    if (!modelMounted) return;
+    const timer = setTimeout(() => setModelMounted(false), MODEL_IDLE_MS);
+    return () => clearTimeout(timer);
+  }, [stage, modelMounted]);
+
+  // Stable identities so the memoised panels below only re-render when their
+  // own data moves — telemetry arriving at hardware rate must not re-render the
+  // camera wall or the activity feed. Each action is destructured out of its
+  // hook rather than reached through it: the hooks hand back a fresh object on
+  // every render, so depending on the object would defeat every memo here.
+  const { estop, take, force, release, requestHandover, respondToHandover } =
+    control;
+  const { call } = robot;
+
+  const onEstop = useCallback(() => {
+    void estop();
+    void call("/weblab/estop");
+  }, [estop, call]);
+
+  const onTake = useCallback(() => void take(), [take]);
+  const onForce = useCallback(() => void force(), [force]);
+  const onRelease = useCallback(() => void release(), [release]);
+  const onRequestHandover = useCallback(
+    () => void requestHandover(),
+    [requestHandover],
+  );
+  const onRespondToHandover = useCallback(
+    (id: string, accept: boolean) => void respondToHandover(id, accept),
+    [respondToHandover],
+  );
+  const toggleUnits = useCallback(
+    () => setUnits((current) => (current === "deg" ? "rad" : "deg")),
+    [],
+  );
 
   return (
     <LabShell
@@ -137,14 +205,11 @@ export function LabConsole({
       viewers={Math.max(robot.viewers, control.state?.presence.length ?? 0)}
       statusDot={statusDot}
       statusLabel={statusLabel}
-      onEstop={() => {
-        void control.estop();
-        void robot.call("/weblab/estop");
-      }}
+      onEstop={onEstop}
     >
       <div className="flex flex-col gap-3">
         {/* Banners */}
-        {recentEstop ? (
+        {estopVisible ? (
           <p
             role="alert"
             className="border border-danger bg-danger/10 px-4 py-2.5 font-mono text-xs text-danger"
@@ -206,25 +271,34 @@ export function LabConsole({
             </div>
 
             <div className="flex min-h-64 flex-col xl:min-h-[28rem]">
-              {stage === "cameras" ? (
+              <Stage active={stage === "cameras"}>
                 <CameraWall
                   controlUrl={controlUrl}
                   layout={layout}
                   canEdit={canOperate}
                   onLayoutChange={persistLayout}
                 />
-              ) : stage === "model" ? (
-                <Robot3D jointsRad={robot.telemetry.jointsRad} />
-              ) : (
+              </Stage>
+
+              {modelMounted ? (
+                <Stage active={stage === "model"}>
+                  <Robot3D
+                    jointsRad={robot.telemetry.jointsRad}
+                    active={stage === "model"}
+                  />
+                </Stage>
+              ) : null}
+
+              <Stage active={stage === "programs"}>
                 <ProgramsPanel
                   programs={programs}
                   telemetry={robot.telemetry}
                   canDrive={canDrive}
                   canEdit={canOperate}
                   onSave={persistPrograms}
-                  call={robot.call}
+                  call={call}
                 />
-              )}
+              </Stage>
             </div>
           </div>
 
@@ -234,7 +308,7 @@ export function LabConsole({
               telemetry={robot.telemetry}
               canDrive={canDrive}
               isOperator={canOperate}
-              call={robot.call}
+              call={call}
             />
           </div>
 
@@ -248,21 +322,19 @@ export function LabConsole({
               iAmHolder={control.iAmHolder}
               queuePosition={control.queuePosition}
               waiting={control.waiting}
-              onTake={() => void control.take()}
-              onForce={() => void control.force()}
-              onRelease={() => void control.release()}
+              onTake={onTake}
+              onForce={onForce}
+              onRelease={onRelease}
               onRequestPromotion={requestPromotion}
-              onRequestHandover={() => void control.requestHandover()}
-              onRespondToHandover={(userId, accept) =>
-                void control.respondToHandover(userId, accept)
-              }
+              onRequestHandover={onRequestHandover}
+              onRespondToHandover={onRespondToHandover}
               handoverRequests={control.handoverRequests}
               awaitingHandover={control.awaitingHandover}
             />
 
             <button
               type="button"
-              onClick={() => setUnits(units === "deg" ? "rad" : "deg")}
+              onClick={toggleUnits}
               className="self-end font-mono text-[9px] uppercase tracking-[0.12em] text-ink3 transition hover:text-accent"
             >
               Ver en {units === "deg" ? "radianes" : "grados"}

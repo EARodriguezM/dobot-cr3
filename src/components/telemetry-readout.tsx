@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { JOINT_LABELS, POSE_AXES } from "@/lib/robot/commands";
 import type { Telemetry } from "@/lib/robot/use-robot";
 
@@ -18,7 +19,7 @@ function Cell({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TelemetryReadout({
+export const TelemetryReadout = memo(function TelemetryReadout({
   telemetry,
   units,
 }: {
@@ -69,4 +70,4 @@ export function TelemetryReadout({
       ) : null}
     </section>
   );
-}
+});

@@ -80,6 +80,32 @@ const TELEMETRY_TOPIC = "/weblab/telemetry";
 const RECONNECT_MS = 4000;
 const MAX_ACTIVITY = 100;
 
+const POSE_KEYS: (keyof Pose)[] = ["x", "y", "z", "rx", "ry", "rz"];
+
+function sameNumbers(a: number[], b: number[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+/** Value equality over the whole telemetry document. */
+function sameTelemetry(a: Telemetry, b: Telemetry): boolean {
+  return (
+    a.connected === b.connected &&
+    a.enabled === b.enabled &&
+    a.speed === b.speed &&
+    a.error === b.error &&
+    sameNumbers(a.jointsDeg, b.jointsDeg) &&
+    sameNumbers(a.jointsRad, b.jointsRad) &&
+    POSE_KEYS.every((key) => a.pose[key] === b.pose[key]) &&
+    a.program.running === b.program.running &&
+    a.program.stepIndex === b.program.stepIndex &&
+    a.program.stepCount === b.program.stepCount &&
+    a.program.programName === b.program.programName &&
+    a.program.operatorName === b.program.operatorName
+  );
+}
+
 export interface RobotConnection {
   link: LinkState;
   telemetry: Telemetry;
@@ -299,16 +325,22 @@ export function useRobot(
     }
 
     function applyTelemetry(document: TelemetryDocument) {
-      setTelemetry((prev) => ({
-        connected: document.connected ?? prev.connected,
-        enabled: document.enabled ?? prev.enabled,
-        speed: document.speed ?? prev.speed,
-        error: document.error ?? "",
-        jointsDeg: document.joints_deg ?? prev.jointsDeg,
-        jointsRad: document.joints_rad ?? prev.jointsRad,
-        pose: { ...prev.pose, ...(document.pose ?? {}) },
-        program: { ...prev.program, ...(document.program ?? {}) },
-      }));
+      setTelemetry((prev) => {
+        const next: Telemetry = {
+          connected: document.connected ?? prev.connected,
+          enabled: document.enabled ?? prev.enabled,
+          speed: document.speed ?? prev.speed,
+          error: document.error ?? "",
+          jointsDeg: document.joints_deg ?? prev.jointsDeg,
+          jointsRad: document.joints_rad ?? prev.jointsRad,
+          pose: { ...prev.pose, ...(document.pose ?? {}) },
+          program: { ...prev.program, ...(document.program ?? {}) },
+        };
+        // The node publishes at a fixed rate whether or not anything moved. A
+        // stationary arm would otherwise hand React a new object several times
+        // a second and re-render the whole console for no change at all.
+        return sameTelemetry(prev, next) ? prev : next;
+      });
     }
 
     void connect();

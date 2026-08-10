@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { describeAction } from "@/lib/robot/commands";
 import type { ActivityEvent } from "@/lib/robot/protocol";
 
@@ -21,7 +22,7 @@ function timeOf(ts: number): string {
   return new Date(ts).toLocaleTimeString("es-CO", { hour12: false });
 }
 
-export function ActivityFeed({
+export const ActivityFeed = memo(function ActivityFeed({
   activity,
   currentUserId,
   className = "",
@@ -88,4 +89,4 @@ export function ActivityFeed({
       </div>
     </section>
   );
-}
+});

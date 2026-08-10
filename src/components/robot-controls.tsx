@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   JOG_CARTESIAN_AXES,
   JOG_JOINT_AXES,
@@ -28,7 +28,12 @@ interface Props {
   call: (service: string, payload?: unknown) => Promise<boolean>;
 }
 
-export function RobotControls({ telemetry, canDrive, isOperator, call }: Props) {
+export const RobotControls = memo(function RobotControls({
+  telemetry,
+  canDrive,
+  isOperator,
+  call,
+}: Props) {
   const [jogMode, setJogMode] = useState<"joint" | "cartesian">("joint");
   const [speed, setSpeed] = useState(50);
   const [target, setTarget] = useState<string[]>(() => Array(6).fill("0"));
@@ -293,7 +298,7 @@ export function RobotControls({ telemetry, canDrive, isOperator, call }: Props) 
       </section>
     </div>
   );
-}
+});
 
 function JogButton({
   axisId,

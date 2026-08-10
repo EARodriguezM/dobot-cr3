@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { DEFAULT_LAYOUT, type WallLayout } from "@/lib/camera-layout";
 import { VideoTile } from "./video-tile";
 
@@ -47,7 +47,10 @@ function presetById(id: string): Preset {
   );
 }
 
-export function CameraWall({
+// Memoised: none of this depends on telemetry, and re-rendering it at the rate
+// the arm reports its joint angles would reconcile every video tile several
+// times a second.
+export const CameraWall = memo(function CameraWall({
   controlUrl,
   layout,
   canEdit,
@@ -208,4 +211,4 @@ export function CameraWall({
       ) : null}
     </div>
   );
-}
+});

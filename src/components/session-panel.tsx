@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { ControlState, ControlUser } from "@/lib/control/store";
 
 // Who is here and who is driving.
@@ -16,7 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
   viewer: "Observador",
 };
 
-export function SessionPanel({
+export const SessionPanel = memo(function SessionPanel({
   state,
   userId,
   canOperate,
@@ -213,6 +214,6 @@ export function SessionPanel({
       </ul>
     </section>
   );
-}
+});
 
 export { ROLE_LABEL };

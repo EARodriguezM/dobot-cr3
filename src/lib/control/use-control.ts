@@ -14,6 +14,11 @@ import type { ControlState, ControlUser } from "./store";
 
 const HEARTBEAT_MS = 5000;
 
+// Shared empty list. `state?.handoverRequests ?? []` would hand the session
+// panel a new array on every render and defeat its memoisation before there is
+// any state at all.
+const NO_USERS: ControlUser[] = [];
+
 interface TakeResponse {
   granted: boolean;
   position: number;
@@ -160,7 +165,7 @@ export function useControl(userId: string | null): ControlSession {
     [handover],
   );
 
-  const handoverRequests = state?.handoverRequests ?? [];
+  const handoverRequests = state?.handoverRequests ?? NO_USERS;
   const awaitingHandover = handoverRequests.some((u) => u.id === userId);
 
   return {

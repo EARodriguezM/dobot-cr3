@@ -25,9 +25,29 @@ const URDF_URL = "/robot/dobot_cr3.urdf";
 
 type LoadState = "loading" | "ready" | "unavailable";
 
-export default function Robot3D({ jointsRad }: { jointsRad: number[] }) {
+/** Everything the render loop needs, kept out of React's state. */
+interface Runtime {
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  controls: OrbitControls;
+}
+
+/**
+ * @param active false while the 3D tab is hidden — the scene stays loaded but
+ *   stops drawing, so leaving this view costs nothing and returning to it is
+ *   instant.
+ */
+export default function Robot3D({
+  jointsRad,
+  active = true,
+}: {
+  jointsRad: number[];
+  active?: boolean;
+}) {
   const mountRef = useRef<HTMLDivElement>(null);
   const robotRef = useRef<URDFRobot | null>(null);
+  const runtimeRef = useRef<Runtime | null>(null);
   const [state, setState] = useState<LoadState>("loading");
 
   useEffect(() => {
@@ -91,17 +111,11 @@ export default function Robot3D({ jointsRad }: { jointsRad: number[] }) {
     const observer = new ResizeObserver(resize);
     observer.observe(mount);
 
-    let frame = 0;
-    const animate = () => {
-      frame = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
+    runtimeRef.current = { renderer, scene, camera, controls };
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(frame);
+      runtimeRef.current = null;
       observer.disconnect();
       controls.dispose();
       // Free GPU memory explicitly: switching tabs back and forth would
@@ -118,6 +132,24 @@ export default function Robot3D({ jointsRad }: { jointsRad: number[] }) {
       robotRef.current = null;
     };
   }, []);
+
+  // The draw loop runs only while this view is on screen. A hidden canvas that
+  // keeps rendering costs a frame of GPU work per telemetry tick for something
+  // nobody is looking at, and on a laptop that is the difference between a
+  // quiet fan and a loud one for a whole class.
+  useEffect(() => {
+    if (!active) return;
+    let frame = 0;
+    const animate = () => {
+      frame = requestAnimationFrame(animate);
+      const runtime = runtimeRef.current;
+      if (!runtime) return;
+      runtime.controls.update();
+      runtime.renderer.render(runtime.scene, runtime.camera);
+    };
+    animate();
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
 
   // Mirror the live joint angles.
   useEffect(() => {
