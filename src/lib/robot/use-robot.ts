@@ -78,6 +78,9 @@ const EMPTY_TELEMETRY: Telemetry = {
 
 const TELEMETRY_TOPIC = "/weblab/telemetry";
 const RECONNECT_MS = 4000;
+/** Ceiling for the reconnect backoff — how long a recovered lab waits to be
+ *  noticed, in the worst case, if nothing wakes the tab first. */
+const MAX_RECONNECT_MS = 20_000;
 const MAX_ACTIVITY = 100;
 
 const POSE_KEYS: (keyof Pose)[] = ["x", "y", "z", "rx", "ry", "rz"];
@@ -165,10 +168,37 @@ export function useRobot(
     if (!controlUrl) return;
     let closed = false;
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+
+    // A lab computer that is switched off stays switched off, and a fixed
+    // retry means the page never settles: every few seconds the status pill
+    // flips "Conectando… → Sin conexión", the offline banner re-renders, and
+    // another session lookup and socket handshake go out. To anyone watching
+    // it looks like the page reloading itself on a timer.
+    //
+    // So: back off, and stop announcing each attempt. The first try says
+    // "connecting"; after that the lab is simply offline until it is not.
+    function scheduleRetry() {
+      if (closed || retry) return;
+      const backoff = Math.min(
+        RECONNECT_MS * Math.pow(1.5, attempt),
+        MAX_RECONNECT_MS,
+      );
+      attempt += 1;
+      // Jitter so a lecture hall coming back online does not reconnect in
+      // lockstep and hand the gatekeeper every socket in the same instant.
+      const delay = backoff * (0.8 + Math.random() * 0.4);
+      retry = setTimeout(() => {
+        retry = null;
+        void connect();
+      }, delay);
+    }
 
     async function connect() {
       if (closed) return;
-      setLink("connecting");
+      // Only the first attempt of a run is worth announcing; a retry that
+      // fails the same way as the last one is not news.
+      if (attempt === 0) setLink("connecting");
 
       // The gatekeeper authenticates the socket, not the request, so the token
       // goes in the first payload rather than a header — browsers cannot set
@@ -183,7 +213,7 @@ export function useRobot(
         socket = new WebSocket(url, [FOXGLOVE_SUBPROTOCOL]);
       } catch {
         setLink("offline");
-        retry = setTimeout(connect, RECONNECT_MS);
+        scheduleRetry();
         return;
       }
       socket.binaryType = "arraybuffer";
@@ -212,7 +242,7 @@ export function useRobot(
           return;
         }
         setLink("offline");
-        retry = setTimeout(connect, RECONNECT_MS);
+        scheduleRetry();
       };
 
       socket.onerror = () => setLink("offline");
@@ -237,6 +267,9 @@ export function useRobot(
       switch (message.op) {
         case "hello": {
           const hello = message as unknown as HelloEvent;
+          // Connected and accepted: the next outage starts from a short delay
+          // again rather than from wherever the last one left off.
+          attempt = 0;
           setLink("online");
           setRole(hello.user.role);
           setViewers(hello.viewers);
@@ -343,9 +376,29 @@ export function useRobot(
       });
     }
 
+    // Backing off is right for a lab that is switched off, and wrong the
+    // moment something says it might not be: a tab coming back to the
+    // foreground, or a laptop that has just found Wi-Fi again. Both skip the
+    // rest of the wait instead of making the user look at "Sin conexión" for
+    // another twenty seconds.
+    const wake = () => {
+      if (closed || document.visibilityState !== "visible") return;
+      if (socketRef.current) return;
+      if (retry) {
+        clearTimeout(retry);
+        retry = null;
+      }
+      attempt = 0;
+      void connect();
+    };
+    window.addEventListener("online", wake);
+    document.addEventListener("visibilitychange", wake);
+
     void connect();
     return () => {
       closed = true;
+      window.removeEventListener("online", wake);
+      document.removeEventListener("visibilitychange", wake);
       if (retry) clearTimeout(retry);
       socketRef.current?.close();
       socketRef.current = null;
