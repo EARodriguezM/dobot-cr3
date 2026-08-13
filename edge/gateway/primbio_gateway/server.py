@@ -637,9 +637,34 @@ class Config:
 GATEWAY_KEY: web.AppKey['Gateway'] = web.AppKey('gateway')
 
 
+# The UI and the control endpoint are always different origins — in production
+# dobot-cr3.primbiolab.org and dobot-cr3-control.primbiolab.org, on a bench
+# localhost:3000 and localhost:8766 — so the browser preflights every video
+# request. Without these headers the camera wall silently shows nothing while
+# the WebSocket, which is not subject to CORS, works fine: a confusing split
+# that costs real time to diagnose.
+#
+# Only the video routes need it. The WebSocket authenticates itself, and
+# echoing the caller's Origin here grants nothing that the go2rtc proxy did not
+# already expose — which is itself worth closing separately.
+@web.middleware
+async def cors_middleware(request: web.Request, handler):
+    origin = request.headers.get('Origin')
+    if request.method == 'OPTIONS':
+        response: web.StreamResponse = web.Response(status=204)
+    else:
+        response = await handler(request)
+    if origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Vary'] = 'Origin'
+    return response
+
+
 def build_app(config: Config) -> web.Application:
     gateway = Gateway(config)
-    app = web.Application()
+    app = web.Application(middlewares=[cors_middleware])
     app[GATEWAY_KEY] = gateway
     app.add_routes(
         [
@@ -647,6 +672,7 @@ def build_app(config: Config) -> web.Application:
             web.get('/health', gateway.handle_health),
             web.post('/api/estop', gateway.handle_estop),
             web.route('*', '/api/video/{tail:.*}', gateway.handle_video),
+            web.options('/api/estop', lambda _r: web.Response(status=204)),
         ]
     )
 
