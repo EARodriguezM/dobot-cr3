@@ -63,6 +63,8 @@ and the 3D tab reports the model as unavailable.
   and how spectators see what the operator is doing.
 - [docs/hardware.md](docs/hardware.md) — ROS 2 graph, service map, the
   gatekeeper protocol, offline mode.
+- [docs/bench-setup.md](docs/bench-setup.md) — standing in for the Pi with a
+  workstation: finding the robot on the network, and what differs.
 - [docs/deploy-pi.md](docs/deploy-pi.md) — tunnel, go2rtc, foxglove_bridge,
   gatekeeper and heartbeat systemd units on the lab computer.
 - [docs/ros2-node.md](docs/ros2-node.md) — executor model and the
