@@ -118,18 +118,60 @@ lsusb | grep -i cam                # external cameras
 lsmod | grep uvcvideo              # driver loaded?
 ```
 
-All four matter, because they fail differently. **On this machine `uvcvideo` is
-loaded but there are no `/dev/video*` nodes, nothing under
-`/sys/class/video4linux/`, and no camera among its USB devices** — the driver
-is ready and there is simply no camera attached for it to bind. A loaded module
-is not evidence of a camera.
+All four matter, because they fail differently, and a loaded module is not
+evidence of a camera: `uvcvideo` sits loaded with no device bound quite
+happily. If the nodes are missing, check that the webcam is plugged into the
+**computer** and not into a monitor's USB hub — a hub that is not passing the
+device through looks exactly like no camera at all.
 
-If you hit the same thing, the options in order of effort: plug in a USB
-webcam, re-enable the integrated camera in firmware if it was disabled there,
-or point go2rtc at any RTSP/MJPEG camera on the network and skip the local
-device entirely. Until one of those, the lab runs exactly as it does with no
-hardware at all — the camera tiles say "Cámara no disponible" and everything
-else works, which is the behaviour the app is built to have.
+### Running it
+
+`ffmpeg` is not installed on this bench and there is no sudo, so go2rtc runs
+in Docker, whose image bundles ffmpeg:
+
+```bash
+docker run -d --name primbio-go2rtc \
+  --device /dev/video0 \
+  -p 127.0.0.1:1984:1984 \
+  -v "$PWD/edge/go2rtc.bench.yaml:/config/go2rtc.yaml:ro" \
+  alexxit/go2rtc
+```
+
+Publishing to `127.0.0.1` only is deliberate: go2rtc has no authentication, and
+the gatekeeper is what is supposed to be reachable.
+
+Read the camera's real capabilities before writing the config rather than
+assuming them — `v4l2-ctl --list-formats-ext` if it is installed, otherwise the
+`VIDIOC_ENUM_FMT` ioctl. The C270 on this bench offers MJPEG and YUYV up to
+1280x720, and the config pins MJPEG because the camera compresses it in
+hardware.
+
+### Verifying it
+
+```bash
+curl -s localhost:1984/api/streams                      # is the stream registered?
+curl -s -o /tmp/f.jpg "localhost:1984/api/frame.jpeg?src=bench"   # a real frame?
+```
+
+**Expect the first snapshot to be black.** That is not a fault. With no client
+streaming, go2rtc starts the producer for the snapshot and stops it again, so
+every snapshot is the camera's first frame — taken before auto-exposure has
+settled. It compresses to a few KB, whereas a real scene is tens of KB, which
+is the quickest way to tell them apart. Capture a few seconds instead and the
+difference is obvious:
+
+```bash
+docker exec primbio-go2rtc sh -c \
+  "ffmpeg -loglevel error -f v4l2 -input_format mjpeg -video_size 1280x720 \
+   -i /dev/video0 -t 6 -vf fps=1 -f image2 -y /tmp/w%d.jpg; ls -l /tmp/w*.jpg"
+```
+
+Frame 1 comes out around 7 KB and black; frames 2 onward around 73 KB and
+correctly exposed. The lab UI never sees this, because a WebRTC viewer holds
+the producer open and exposure settles within about a second.
+
+The `unable to decode APP fields` warnings from the MJPEG decoder are noise
+from this camera's JPEG headers and can be ignored — frames decode fine.
 
 ## What still differs from the Pi
 

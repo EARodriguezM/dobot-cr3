@@ -1,0 +1,26 @@
+# go2rtc for a workstation standing in for the lab computer.
+#
+# The real lab uses edge/go2rtc.yaml with IP cameras. This one drives whatever
+# webcam is plugged into the bench, so the camera wall can be exercised before
+# any lab hardware exists.
+#
+# The C270 compresses to MJPEG in hardware, which is why the input format is
+# pinned: letting ffmpeg pick would give raw YUYV at 1280x720 and burn CPU
+# moving uncompressed frames around for no gain. WebRTC cannot carry MJPEG, so
+# it is transcoded to H264 on the way out — acceptable on a workstation, and
+# the reason the real labs use cameras that emit H264 themselves.
+
+streams:
+  bench: ffmpeg:device?video=/dev/video0&input_format=mjpeg&video_size=1280x720#video=h264#hardware
+
+api:
+  # Localhost only. The gatekeeper proxies /api/video/* to here; go2rtc itself
+  # has no authentication and must never be exposed directly.
+  listen: ":1984"
+
+webrtc:
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+
+log:
+  level: info
