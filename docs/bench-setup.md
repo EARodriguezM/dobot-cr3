@@ -173,6 +173,35 @@ the producer open and exposure settles within about a second.
 The `unable to decode APP fields` warnings from the MJPEG decoder are noise
 from this camera's JPEG headers and can be ignored — frames decode fine.
 
+## Building the ROS 2 packages
+
+```bash
+sudo apt install ros-jazzy-foxglove-bridge
+mkdir -p edge/ros2_ws/src && cp -r edge/ros2/* edge/ros2_ws/src/
+ln -s "$PWD/ros2_interfaces/dobot_cr3_control/src/dobot_cr_msgs" edge/ros2_ws/src/
+cd edge/ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --cmake-args -DPYTHON_EXECUTABLE=/usr/bin/python3
+```
+
+`-DPYTHON_EXECUTABLE` is not optional on this machine: Homebrew's `python3`
+comes first on `PATH` and has no `empy`, so `rosidl` dies with
+`No module named 'em'` while pointing at a CMake file that has nothing to do
+with the problem. The same shadowing makes `aiohttp` look absent to the
+gateway — run it as `/usr/bin/python3 -m primbio_gateway.server`.
+
+Then, in three terminals:
+
+```bash
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765 address:=127.0.0.1
+ros2 run dobot_cr3_weblab weblab
+/usr/bin/python3 -m primbio_gateway.server      # from edge/gateway
+```
+
+`ros2 service list | grep /weblab/` should show the vetted surface, and
+`ros2 topic echo /weblab/telemetry --once` a JSON document with
+`"connected": false` until the driver is running.
+
 ## What still differs from the Pi
 
 - **Cloudflare WARP is running on this workstation** (`CloudflareWARP`
