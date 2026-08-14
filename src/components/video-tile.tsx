@@ -54,13 +54,46 @@ export function VideoTile({
         });
         connection.addTransceiver("video", { direction: "recvonly" });
         connection.ontrack = (event) => {
-          if (videoRef.current && !cancelled) {
-            videoRef.current.srcObject = event.streams[0];
-            setOutcome({ key, state: "live" });
+          if (!videoRef.current || cancelled) return;
+          videoRef.current.srcObject = event.streams[0];
+          // ontrack fires when the answer is applied, long before any media
+          // arrives — reporting "live" here is how a black tile ends up
+          // labelled EN VIVO. Wait for the decoder to produce a frame.
+          const onData = () => {
+            if (!cancelled) setOutcome({ key, state: "live" });
+          };
+          videoRef.current.addEventListener("loadeddata", onData, { once: true });
+        };
+
+        // If ICE fails there is no error event on the fetch — the tile would
+        // simply never leave "connecting". Say so instead.
+        connection.oniceconnectionstatechange = () => {
+          const state = connection?.iceConnectionState;
+          if (!cancelled && (state === "failed" || state === "disconnected")) {
+            setOutcome({ key, state: "failed" });
           }
         };
         const offer = await connection.createOffer();
         await connection.setLocalDescription(offer);
+
+        // Wait for ICE gathering before sending the offer. go2rtc's WHEP
+        // endpoint answers once and there is no trickle channel to add
+        // candidates afterwards, so an offer posted straight after
+        // setLocalDescription carries no candidates at all — the connection
+        // then never completes and the tile sits black with no error anywhere.
+        await new Promise<void>((resolve) => {
+          if (connection!.iceGatheringState === "complete") return resolve();
+          const done = () => {
+            if (connection!.iceGatheringState === "complete") {
+              connection!.removeEventListener("icegatheringstatechange", done);
+              resolve();
+            }
+          };
+          connection!.addEventListener("icegatheringstatechange", done);
+          // Some candidates (relay, or a host that is slow to enumerate) can
+          // take a while; a partial candidate set beats waiting forever.
+          setTimeout(resolve, 3000);
+        });
 
         const supabase = createClient();
         const token =
@@ -73,7 +106,7 @@ export function VideoTile({
               "Content-Type": "application/sdp",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
-            body: offer.sdp,
+            body: connection.localDescription?.sdp ?? offer.sdp,
             signal: AbortSignal.timeout(8000),
           },
         );
