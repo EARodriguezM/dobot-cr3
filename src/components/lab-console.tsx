@@ -304,7 +304,7 @@ export function LabConsole({
           </div>
 
           {/* Session · telemetry · activity */}
-          <div className="flex min-w-0 flex-col gap-3 lg:order-3 xl:order-3">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3 lg:order-3 xl:order-3">
             <SessionPanel
               state={control.state}
               userId={userId}
@@ -335,7 +335,13 @@ export function LabConsole({
             <ActivityFeed
               activity={robot.activity}
               currentUserId={userId}
-              className="max-h-80 xl:max-h-none xl:flex-1"
+              // Capped at every width, never merely flex-sized: this column is
+              // a grid item in a content-sized row, so a feed left to grow sets
+              // the row height, which sets the column height, which lets it
+              // grow again — an unbounded box. The cap breaks that loop and the
+              // list scrolls inside itself. flex-1 only fills leftover height
+              // when the stage next to it happens to be taller.
+              className="max-h-[min(50vh,20rem)] xl:max-h-[min(55vh,26rem)] xl:min-h-48 xl:flex-1"
             />
           </div>
         </div>

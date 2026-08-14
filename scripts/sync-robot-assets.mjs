@@ -29,8 +29,13 @@ const outDir = join(root, "public/robot");
 
 // The URDF addresses meshes through the ROS package resolver; the browser
 // needs plain URLs under the public/ mount.
+//
+// The replacement is empty on purpose, leaving paths relative to the URDF
+// ("meshes/visual/base_link.dae"): urdf-loader resolves every mesh against the
+// directory the URDF was fetched from, so an absolute "/robot/..." here would
+// be prefixed a second time and requested as "/robot/robot/meshes/...".
 const PACKAGE_URI = "package://dobot_cr3_description/";
-const PUBLIC_BASE = "/robot/";
+const PUBLIC_BASE = "";
 
 async function exists(path) {
   try {
