@@ -3,17 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { playMse, type MsePlayer } from "@/lib/robot/mse-player";
+import { watchFrames } from "@/lib/robot/video-frames";
 
-// One camera, played over WebRTC from go2rtc on the lab computer.
+// One camera, played from go2rtc on the lab computer: WebRTC first, MSE over
+// the authenticated WebSocket when ICE fails.
 //
 // go2rtc is what makes a *shared* lab affordable: it pulls each camera once
-// and fans it out to every viewer as a peer connection. The reference
-// implementation proxied MJPEG per viewer through the Pi, which meant a class
-// of twenty watching cost twenty decoded streams on a Raspberry Pi and twenty
-// times the tunnel bandwidth.
+// and fans it out to every viewer. The reference implementation proxied MJPEG
+// per viewer through the Pi, which meant a class of twenty watching cost
+// twenty decoded streams on a Raspberry Pi and twenty times the tunnel
+// bandwidth.
 //
 // WebRTC negotiates UDP through STUN; when the university NAT defeats hole
-// punching the connection fails rather than hanging, and the tile says so.
+// punching, this falls back to MSE rather than sitting on a black rectangle.
 
 type State = "idle" | "connecting" | "live" | "failed";
 
@@ -48,17 +50,40 @@ export function VideoTile({
     let cancelled = false;
     let connection: RTCPeerConnection | null = null;
     let mse: MsePlayer | null = null;
+    let startingMse = false;
+    let live = false;
+    let stopFrames: (() => void) | null = null;
+
+    // Only a painted frame counts as live. Latched, because the frame watcher
+    // fires per frame and this sets React state.
+    const markLive = () => {
+      if (cancelled || live) return;
+      live = true;
+      setOutcome({ key, state: "live" });
+    };
 
     // ICE failing is not an error the user should have to care about: on this
     // network it is the normal outcome. Fall back to MSE over the same
     // authenticated WebSocket the rest of the lab uses, which needs no UDP.
     async function fallbackToMse() {
-      if (cancelled || mse || !videoRef.current) return;
+      // Three separate paths trigger this — an ICE state change, the deadline,
+      // and a signalling failure — and there is an await before `mse` is
+      // assigned. Without a synchronous latch two of them race and open two
+      // sockets onto one element, doubling the load on the camera and leaking
+      // the loser forever.
+      if (cancelled || startingMse || !videoRef.current) return;
+      startingMse = true;
       try {
         connection?.close();
       } catch {
         // already closed
       }
+      // Stop watching the peer connection's frames, and stop claiming live on
+      // its behalf: WebRTC may have painted a frame or two before ICE died.
+      stopFrames?.();
+      stopFrames = null;
+      live = false;
+      setOutcome({ key, state: "connecting" });
       const supabase = createClient();
       const token =
         (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
@@ -69,12 +94,9 @@ export function VideoTile({
         `${controlUrl!.replace(/^http/, "ws")}/api/video/api/ws` +
         `?src=${encodeURIComponent(source!)}` +
         (token ? `&access_token=${encodeURIComponent(token)}` : "");
-      mse = playMse(
-        videoRef.current,
-        wsUrl,
-        () => setOutcome({ key, state: "live" }),
-        () => setOutcome({ key, state: "failed" }),
-      );
+      mse = playMse(videoRef.current, wsUrl, markLive, () => {
+        if (!cancelled) setOutcome({ key, state: "failed" });
+      });
     }
 
     async function connect() {
@@ -84,15 +106,14 @@ export function VideoTile({
         });
         connection.addTransceiver("video", { direction: "recvonly" });
         connection.ontrack = (event) => {
-          if (!videoRef.current || cancelled) return;
+          if (!videoRef.current || cancelled || startingMse) return;
           videoRef.current.srcObject = event.streams[0];
           // ontrack fires when the answer is applied, long before any media
-          // arrives — reporting "live" here is how a black tile ends up
-          // labelled EN VIVO. Wait for the decoder to produce a frame.
-          const onData = () => {
-            if (!cancelled) setOutcome({ key, state: "live" });
-          };
-          videoRef.current.addEventListener("loadeddata", onData, { once: true });
+          // arrives, and `loadeddata` fires on metadata alone — reporting live
+          // on either is how a black tile ends up labelled EN VIVO. Wait for a
+          // frame to actually reach the screen.
+          stopFrames?.();
+          stopFrames = watchFrames(videoRef.current, markLive);
         };
 
         // If ICE fails there is no error event on the fetch — the tile would
@@ -165,6 +186,7 @@ export function VideoTile({
     return () => {
       cancelled = true;
       clearTimeout(iceDeadline);
+      stopFrames?.();
       connection?.close();
       mse?.close();
     };
