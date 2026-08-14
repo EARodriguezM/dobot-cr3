@@ -34,7 +34,7 @@ from typing import Any, Dict, Optional, Set
 import aiohttp
 from aiohttp import web
 
-from . import policy, protocol
+from . import cdr, policy, protocol
 from .auth import AuthError, Identity, LeaseVerifier, TokenVerifier, probe_jwks
 
 log = logging.getLogger('primbio.gateway')
@@ -340,7 +340,7 @@ class Gateway:
                 await self.announce(
                     session,
                     decision.activity,
-                    _decode_detail(call),
+                    _decode_detail(call, name),
                     decision.is_stop,
                 )
             await upstream.send_bytes(data)
@@ -448,29 +448,77 @@ class Gateway:
                     service_id = await self._await_service_id(ws, service_name)
                     if service_id is None:
                         return False, f'{service_name} is not advertised'
-                    payload = b'{}'
-                    encoding = b'json'
+                    # CDR, not JSON. The bridge advertises `cdr` as the request
+                    # encoding for every ROS 2 service and answers anything
+                    # else with "Unsupported encoding" — which on this path
+                    # means the backup emergency stop is refused before it ever
+                    # reaches ROS, while this function cheerfully reported it
+                    # dispatched. The stop is the one call that must not have a
+                    # silent failure mode.
+                    call_id = 1
+                    encoding = b'cdr'
                     frame = (
                         bytes([protocol.CLIENT_SERVICE_CALL_REQUEST])
-                        + struct.pack('<III', service_id, 1, len(encoding))
+                        + struct.pack('<III', service_id, call_id, len(encoding))
                         + encoding
-                        + payload
+                        + cdr.EMPTY_REQUEST
                     )
                     await ws.send_bytes(frame)
                     # The stop has been handed to ROS; the response only tells
                     # us how it went, so a slow reply must not delay the caller
                     # for long.
-                    try:
-                        reply = await asyncio.wait_for(ws.receive(), timeout=4.0)
-                    except asyncio.TimeoutError:
-                        return True, 'dispatched (no response within 4s)'
-                    if reply.type is aiohttp.WSMsgType.TEXT:
-                        message = json.loads(reply.data)
-                        if message.get('op') == 'serviceCallFailure':
-                            return False, str(message.get('message') or 'call failed')
-                    return True, 'ok'
+                    return await self._await_call_result(ws, call_id)
         except Exception as exc:
             return False, str(exc)
+
+    async def _await_call_result(
+        self,
+        ws: aiohttp.ClientWebSocketResponse,
+        call_id: int,
+        timeout: float = 4.0,
+    ) -> tuple[bool, str]:
+        """Wait for the bridge's verdict on one service call.
+
+        The bridge interleaves advertisements and status frames with replies,
+        so this reads until it sees something about *this* call rather than
+        treating the next frame as the answer — which is how a stray advertise
+        used to be reported as a successful stop.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                reply = await asyncio.wait_for(
+                    ws.receive(), timeout=deadline - time.monotonic()
+                )
+            except asyncio.TimeoutError:
+                break
+            if reply.type is aiohttp.WSMsgType.TEXT:
+                try:
+                    message = json.loads(reply.data)
+                except Exception:
+                    continue
+                if (
+                    message.get('op') == 'serviceCallFailure'
+                    and message.get('callId') == call_id
+                ):
+                    return False, str(message.get('message') or 'call failed')
+            elif reply.type is aiohttp.WSMsgType.BINARY:
+                data = reply.data
+                if not data or data[0] != protocol.SERVER_SERVICE_CALL_RESPONSE:
+                    continue
+                if len(data) < 13:
+                    continue
+                _sid, reply_call_id, encoding_len = struct.unpack_from(
+                    '<III', data, 1)
+                if reply_call_id != call_id:
+                    continue
+                result = cdr.read_result(data[13 + encoding_len:])
+                if result is None:
+                    return True, 'dispatched (unreadable response)'
+                return bool(result['ok']), str(result['message'] or 'ok')
+            elif reply.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                return False, 'bridge closed the connection'
+        return True, f'dispatched (no response within {timeout:g}s)'
 
     async def _await_service_id(
         self, ws: aiohttp.ClientWebSocketResponse, name: str, timeout: float = 5.0
@@ -601,15 +649,23 @@ class Gateway:
         )
 
 
-def _decode_detail(call: protocol.ServiceCall) -> Any:
-    """Best-effort, size-capped view of a service payload for the activity feed."""
-    if call.encoding != 'json':
-        return {'encoding': call.encoding}
-    try:
-        text = call.payload[:ACTIVITY_DETAIL_LIMIT].decode('utf-8')
-        return json.loads(text)
-    except Exception:
-        return None
+def _decode_detail(call: protocol.ServiceCall, name: Optional[str]) -> Any:
+    """Best-effort, size-capped view of a service payload for the activity feed.
+
+    The client speaks CDR — the only encoding the bridge accepts — so this has
+    to read CDR to say which axis was jogged or what speed was set. Reporting
+    ``{'encoding': 'cdr'}`` instead, as this did, left every entry in the feed
+    without its detail: "movió un eje", never which one.
+    """
+    payload = call.payload[:ACTIVITY_DETAIL_LIMIT]
+    if call.encoding == 'json':
+        try:
+            return json.loads(payload.decode('utf-8'))
+        except Exception:
+            return None
+    if call.encoding == 'cdr' and name:
+        return cdr.read_request(name, payload)
+    return None
 
 
 # ── Configuration and entry point ───────────────────────────────────────────

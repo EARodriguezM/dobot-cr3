@@ -176,6 +176,18 @@ class RobotBridge:
             time.sleep(0.01)
         if not future.done():
             return _fail(f'el servicio {key} agotó el tiempo de espera')
+
+        # The driver answering is not the robot agreeing. Every one of these
+        # services replies with `int32 res`, the controller's error id, and 0
+        # is the only value that means the command was accepted. Returning
+        # success for any completed call reported a refused command — a wrong
+        # payload, an arm in an error state, a move outside its limits — as
+        # done, and the operator saw nothing at all.
+        response = future.result()
+        code = int(getattr(response, 'res', 0) or 0)
+        if code != 0:
+            return _fail(
+                f'el robot rechazó el comando ({key}: código {code})')
         return _ok()
 
     # ── Commands ────────────────────────────────────────────────────────────

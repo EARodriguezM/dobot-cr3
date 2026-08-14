@@ -90,7 +90,8 @@ export function encodeServiceCall(
 
 export interface DecodedMessage {
   subscriptionId: number;
-  payload: string;
+  /** The message body, still CDR-encoded. */
+  payload: ArrayBuffer;
 }
 
 /** Decode a server message-data frame (opcode 1). */
@@ -102,14 +103,15 @@ export function decodeMessageData(buffer: ArrayBuffer): DecodedMessage | null {
     subscriptionId: view.getUint32(1, true),
     // Bytes 5..13 are the receive timestamp, which we do not use: the message
     // itself carries a ROS header stamp when it matters.
-    payload: new TextDecoder().decode(new Uint8Array(buffer, 13)),
+    payload: buffer.slice(13),
   };
 }
 
 export interface DecodedServiceResponse {
   serviceId: number;
   callId: number;
-  payload: string;
+  /** The response body, still CDR-encoded. */
+  payload: ArrayBuffer;
 }
 
 /** Decode a server service-call response frame (opcode 3). */
@@ -124,9 +126,7 @@ export function decodeServiceResponse(
   const encodingLength = view.getUint32(9, true);
   const start = 13 + encodingLength;
   if (start > buffer.byteLength) return null;
-  return {
-    serviceId,
-    callId,
-    payload: new TextDecoder().decode(new Uint8Array(buffer, start)),
-  };
+  // Bodies are CDR, not text: decoding them as UTF-8 mangles every float in
+  // them. The caller gets the bytes and picks the right reader.
+  return { serviceId, callId, payload: buffer.slice(start) };
 }

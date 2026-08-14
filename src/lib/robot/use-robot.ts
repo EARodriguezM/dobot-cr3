@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { decodeCdrJson } from "./cdr";
+import { readResultResponse } from "./cdr-writer";
 import {
   EMPTY_POSE,
   SERVICES,
@@ -150,6 +151,7 @@ export function useRobot(
   const socketRef = useRef<WebSocket | null>(null);
   const servicesRef = useRef(new Map<string, number>());
   const subscriptionsRef = useRef(new Map<number, string>());
+  const subscriptionIdRef = useRef(1);
   const pendingRef = useRef(new Map<number, (ok: boolean) => void>());
   const callIdRef = useRef(1);
   const leaseRef = useRef<string | null>(leaseToken);
@@ -196,7 +198,7 @@ export function useRobot(
     }
 
     async function connect() {
-      if (closed) return;
+      if (closed || socketRef.current) return;
       // Only the first attempt of a run is worth announcing; a retry that
       // fails the same way as the last one is not news.
       if (attempt === 0) setLink("connecting");
@@ -207,6 +209,16 @@ export function useRobot(
       const supabase = createClient();
       const accessToken =
         (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
+
+      // Fetching the session suspends this function, and the effect can be
+      // torn down — or a wake-up can start a second connect — while we are
+      // suspended. Both leave `socketRef` null, so the cleanup finds nothing
+      // to close and a socket opened now belongs to nobody: it stays open with
+      // its handlers live, feeding a second copy of every activity and
+      // presence frame into the same state as the real one. That is what the
+      // duplicate keys in the feed and the inflated viewer count were.
+      // React's development double mount reproduces it on every page load.
+      if (closed || socketRef.current) return;
 
       const url = `${controlUrl!.replace(/^http/, "ws")}/ws`;
       let socket: WebSocket;
@@ -231,6 +243,9 @@ export function useRobot(
       };
 
       socket.onclose = (event) => {
+        // Only retract the ref if this socket is still the one holding it: a
+        // socket that lost a reconnect race must not blank out its successor.
+        if (socketRef.current !== socket) return;
         socketRef.current = null;
         servicesRef.current.clear();
         subscriptionsRef.current.clear();
@@ -283,7 +298,15 @@ export function useRobot(
         }
         case "activity": {
           const eventData = message as unknown as ActivityEvent;
-          setActivity((prev) => [eventData, ...prev].slice(0, MAX_ACTIVITY));
+          // The gatekeeper mints one id per command and broadcasts it to every
+          // session. Dropping a repeat keeps the feed a log of what happened
+          // rather than of how many times we heard about it — and keeps React
+          // from ever seeing two children under the same key.
+          setActivity((prev) =>
+            prev.some((event) => event.id === eventData.id)
+              ? prev
+              : [eventData, ...prev].slice(0, MAX_ACTIVITY),
+          );
           break;
         }
         case "presence": {
@@ -329,8 +352,11 @@ export function useRobot(
     function subscribe(channels: Channel[]) {
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
-      const subscriptions = channels.map((channel, index) => {
-        const id = subscriptionsRef.current.size + index + 1;
+      // Ids come from a counter, not from the map's size: an unsubscribe or a
+      // second advertise would otherwise hand out an id that is already live,
+      // and the bridge would route two topics onto one subscription.
+      const subscriptions = channels.map((channel) => {
+        const id = subscriptionIdRef.current++;
         subscriptionsRef.current.set(id, channel.topic);
         return { id, channelId: channel.id };
       });
@@ -343,18 +369,27 @@ export function useRobot(
         if (subscriptionsRef.current.get(data.subscriptionId) !== TELEMETRY_TOPIC) {
           return;
         }
-        // decodeMessageData already sliced off the frame header; the remainder
-        // is the CDR-encoded std_msgs/String the weblab node publishes.
-        const document = decodeCdrJson<TelemetryDocument>(
-          buffer.slice(13),
-        );
+        // The payload is the CDR-encoded std_msgs/String the weblab node
+        // publishes.
+        const document = decodeCdrJson<TelemetryDocument>(data.payload);
         if (document) applyTelemetry(document);
         return;
       }
       const response = decodeServiceResponse(buffer);
       if (response) {
-        pendingRef.current.get(response.callId)?.(true);
+        const resolve = pendingRef.current.get(response.callId);
         pendingRef.current.delete(response.callId);
+        // A response frame only means ROS answered. Every weblab service
+        // answers `bool success, string message`, and the message is the only
+        // place the reason for a refusal exists — the arm's telemetry cannot
+        // say "the driver is not running". Treating the frame itself as
+        // success is why a dead driver looked exactly like a working one: the
+        // button reported done and nothing moved.
+        const result = readResultResponse(response.payload);
+        resolve?.(result ? result.ok : true);
+        if (result && !result.ok) {
+          setLastDenial(result.message || "el robot rechazó el comando");
+        }
       }
     }
 
