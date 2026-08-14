@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 // One camera, played over WebRTC from go2rtc on the lab computer.
 //
@@ -61,11 +62,17 @@ export function VideoTile({
         const offer = await connection.createOffer();
         await connection.setLocalDescription(offer);
 
+        const supabase = createClient();
+        const token =
+          (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
         const response = await fetch(
           `${controlUrl}/api/video/api/webrtc?src=${encodeURIComponent(source!)}`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/sdp" },
+            headers: {
+              "Content-Type": "application/sdp",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
             body: offer.sdp,
             signal: AbortSignal.timeout(8000),
           },

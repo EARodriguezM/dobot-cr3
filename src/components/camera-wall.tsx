@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_LAYOUT, type WallLayout } from "@/lib/camera-layout";
 import { VideoTile } from "./video-tile";
 
@@ -71,9 +72,16 @@ export const CameraWall = memo(function CameraWall({
   useEffect(() => {
     if (!controlUrl) return;
     let cancelled = false;
-    fetch(`${controlUrl}/api/video/api/streams`, {
-      signal: AbortSignal.timeout(6000),
-    })
+    // The gatekeeper authenticates video the same way it authenticates the
+    // socket, so the session token has to ride along.
+    void (async () => {
+      const supabase = createClient();
+      const token =
+        (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
+      await fetch(`${controlUrl}/api/video/api/streams`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: AbortSignal.timeout(6000),
+      })
       .then((response) => (response.ok ? response.json() : {}))
       .then((data: Record<string, unknown>) => {
         if (!cancelled) setFetchedStreams(Object.keys(data ?? {}));
@@ -81,6 +89,7 @@ export const CameraWall = memo(function CameraWall({
       .catch(() => {
         // go2rtc down or tunnel closed: the tiles say so themselves.
       });
+    })();
     return () => {
       cancelled = true;
     };

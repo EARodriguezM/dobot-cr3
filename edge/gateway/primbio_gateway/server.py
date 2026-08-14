@@ -39,7 +39,15 @@ from .auth import AuthError, Identity, LeaseVerifier, TokenVerifier, probe_jwks
 
 log = logging.getLogger('primbio.gateway')
 
+# What the browser speaks to us. Kept as the original name because that is what
+# the web client sends.
 FOXGLOVE_SUBPROTOCOL = 'foxglove.websocket.v1'
+
+# What the bridge might speak. foxglove_bridge renamed the subprotocol at 3.x
+# ('foxglove.sdk.v1') and rejects the old name with a bare HTTP 400, which
+# reads like a routing fault rather than a negotiation one. Offering both lets
+# the server pick and keeps this working across bridge versions.
+UPSTREAM_SUBPROTOCOLS = ['foxglove.sdk.v1', 'foxglove.websocket.v1']
 
 # A socket that has not identified itself this quickly is closed. Short on
 # purpose: an unauthenticated socket is a resource an anonymous caller controls.
@@ -243,7 +251,7 @@ class Gateway:
         try:
             ws = await session.ws_connect(
                 self.config.bridge_url,
-                protocols=[FOXGLOVE_SUBPROTOCOL],
+                protocols=UPSTREAM_SUBPROTOCOLS,
                 heartbeat=20.0,
                 max_msg_size=16 * 1024 * 1024,
             )
@@ -435,7 +443,7 @@ class Gateway:
         try:
             async with aiohttp.ClientSession() as http:
                 async with http.ws_connect(
-                    self.config.bridge_url, protocols=[FOXGLOVE_SUBPROTOCOL]
+                    self.config.bridge_url, protocols=UPSTREAM_SUBPROTOCOLS
                 ) as ws:
                     service_id = await self._await_service_id(ws, service_name)
                     if service_id is None:
@@ -501,6 +509,20 @@ class Gateway:
         process. The MSE fallback does stream through it, which is the price of
         working at all on a network where UDP hole punching fails.
         """
+        # Video is lab data. The WebSocket has always authenticated itself;
+        # this route did not, which meant anyone who knew the tunnel hostname
+        # could watch the cameras. The browser reaches these routes through
+        # fetch(), so it can carry the same bearer token the socket sends.
+        header = request.headers.get('Authorization', '')
+        token = header[7:] if header.lower().startswith('bearer ') else ''
+        if not token:
+            token = request.query.get('access_token', '')
+        try:
+            self.tokens.verify(token)
+        except AuthError as exc:
+            log.info('[video] rejected from %s: %s', request.remote, exc)
+            return web.json_response({'error': 'unauthorized'}, status=401)
+
         tail = request.match_info.get('tail', '')
         target = f'{self.config.go2rtc_url}/{tail}'
         if request.query_string:

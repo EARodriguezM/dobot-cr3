@@ -153,6 +153,12 @@ export function LabConsole({
     return () => clearTimeout(timer);
   }, [robot.lastDenial, robot.clearDenial]);
 
+  // Derived every render from the live link state, never stored: a banner
+  // held in state is exactly how a stale "Reintentando…" outlives the
+  // reconnection it was describing. Returning null when the link is healthy is
+  // what makes it disappear on its own.
+  const connection = describeConnection(robot.link, robot.telemetry.connected);
+
   const { statusDot, statusLabel } = describeLink(
     robot.link,
     robot.telemetry.connected,
@@ -230,18 +236,8 @@ export function LabConsole({
           </Banner>
         ) : null}
 
-        {robot.link === "unauthorized" ? (
-          <Banner tone="warn">
-            El laboratorio rechazó tu sesión. Pide a un administrador del
-            proyecto que te asigne un rol en este laboratorio.
-          </Banner>
-        ) : null}
-
-        {robot.link === "offline" ? (
-          <Banner tone="neutral">
-            Sin conexión con el computador del laboratorio — modo solo
-            observación. Reintentando…
-          </Banner>
+        {connection ? (
+          <Banner tone={connection.tone}>{connection.message}</Banner>
         ) : null}
 
         {robot.lastDenial ? (
@@ -346,6 +342,61 @@ export function LabConsole({
       </div>
     </LabShell>
   );
+}
+
+type BannerTone = "warn" | "neutral" | "ok";
+
+// The banner and the status pill answer the same question at different
+// lengths, so they are derived from the same input rather than kept in step by
+// hand. Two distinct facts are folded in: whether this browser can reach the
+// lab computer at all, and whether the robot behind it is reporting — a lab
+// can be perfectly reachable with the arm switched off, and saying "sin
+// conexión" then would be wrong.
+function describeConnection(
+  link: string,
+  robotConnected: boolean,
+): { tone: BannerTone; message: string } | null {
+  switch (link) {
+    case "connecting":
+      return {
+        tone: "neutral",
+        message: "Conectando con el computador del laboratorio…",
+      };
+    case "offline":
+      return {
+        tone: "neutral",
+        message:
+          "Sin conexión con el computador del laboratorio — modo solo " +
+          "observación. Reintentando automáticamente…",
+      };
+    case "unauthorized":
+      return {
+        tone: "warn",
+        message:
+          "El laboratorio rechazó tu sesión. Pide a un administrador del " +
+          "proyecto que te asigne un rol en este laboratorio.",
+      };
+    case "demo":
+      return {
+        tone: "neutral",
+        message:
+          "Modo demostración: telemetría simulada y sin hardware conectado.",
+      };
+    case "online":
+      // Connected to the lab computer, but the robot itself is not reporting.
+      // Worth saying plainly, because every control will refuse and the reason
+      // is not the web app.
+      return robotConnected
+        ? null
+        : {
+            tone: "warn",
+            message:
+              "Conectado al laboratorio, pero el robot no está reportando: " +
+              "revisa que el driver esté en marcha. Solo observación.",
+          };
+    default:
+      return null;
+  }
 }
 
 function describeLink(

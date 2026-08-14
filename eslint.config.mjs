@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     // ours to lint, and linting them fails the build on their style choices.
     ".open-next/**",
     ".wrangler/**",
+    // Edge services are Python and ROS 2; the ROS build tree also emits
+    // CMake dependency files with a .ts extension that are not TypeScript.
+    "edge/**",
   ]),
 ]);
 
