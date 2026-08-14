@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { playMse, type MsePlayer } from "@/lib/robot/mse-player";
 
 // One camera, played over WebRTC from go2rtc on the lab computer.
 //
@@ -46,6 +47,35 @@ export function VideoTile({
     if (!controlUrl || !source) return;
     let cancelled = false;
     let connection: RTCPeerConnection | null = null;
+    let mse: MsePlayer | null = null;
+
+    // ICE failing is not an error the user should have to care about: on this
+    // network it is the normal outcome. Fall back to MSE over the same
+    // authenticated WebSocket the rest of the lab uses, which needs no UDP.
+    async function fallbackToMse() {
+      if (cancelled || mse || !videoRef.current) return;
+      try {
+        connection?.close();
+      } catch {
+        // already closed
+      }
+      const supabase = createClient();
+      const token =
+        (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
+      if (cancelled || !videoRef.current) return;
+      // The browser cannot set headers on a WebSocket upgrade, so the token
+      // travels as a query parameter — the gatekeeper accepts either.
+      const wsUrl =
+        `${controlUrl!.replace(/^http/, "ws")}/api/video/api/ws` +
+        `?src=${encodeURIComponent(source!)}` +
+        (token ? `&access_token=${encodeURIComponent(token)}` : "");
+      mse = playMse(
+        videoRef.current,
+        wsUrl,
+        () => setOutcome({ key, state: "live" }),
+        () => setOutcome({ key, state: "failed" }),
+      );
+    }
 
     async function connect() {
       try {
@@ -70,7 +100,7 @@ export function VideoTile({
         connection.oniceconnectionstatechange = () => {
           const state = connection?.iceConnectionState;
           if (!cancelled && (state === "failed" || state === "disconnected")) {
-            setOutcome({ key, state: "failed" });
+            void fallbackToMse();
           }
         };
         const offer = await connection.createOffer();
@@ -116,14 +146,27 @@ export function VideoTile({
           sdp: await response.text(),
         });
       } catch {
-        if (!cancelled) setOutcome({ key, state: "failed" });
+        // Signalling itself failed — try the path that does not need it.
+        if (!cancelled) void fallbackToMse();
       }
     }
 
     void connect();
+
+    // WebRTC can also fail by simply never connecting: no error, no state
+    // change, just silence. Give it a bounded chance, then switch.
+    const iceDeadline = setTimeout(() => {
+      if (connection?.iceConnectionState !== "connected" &&
+          connection?.iceConnectionState !== "completed") {
+        void fallbackToMse();
+      }
+    }, 6000);
+
     return () => {
       cancelled = true;
+      clearTimeout(iceDeadline);
       connection?.close();
+      mse?.close();
     };
   }, [controlUrl, source, key]);
 
