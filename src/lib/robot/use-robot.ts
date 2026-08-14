@@ -6,6 +6,7 @@ import { decodeCdrJson } from "./cdr";
 import {
   EMPTY_POSE,
   SERVICES,
+  encodeRequest,
   type Pose,
   type ProgramStatus,
 } from "./commands";
@@ -442,7 +443,9 @@ export function useRobot(
         return false;
       }
       const callId = callIdRef.current++;
-      socket.send(encodeServiceCall(serviceId, callId, payload));
+      socket.send(
+        encodeServiceCall(serviceId, callId, encodeRequest(service, payload)),
+      );
 
       return new Promise<boolean>((resolve) => {
         pendingRef.current.set(callId, resolve);

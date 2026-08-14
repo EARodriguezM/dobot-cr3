@@ -1,3 +1,5 @@
+import { CdrWriter, emptyRequest } from "./cdr-writer";
+
 // The CR3 command surface, as the edge gatekeeper exposes it.
 //
 // These names must match `edge/gateway/primbio_gateway/policy.py` exactly:
@@ -29,6 +31,60 @@ export const STOP_SERVICES: ReadonlySet<string> = new Set([
   SERVICES.jogStop,
   SERVICES.programStop,
 ]);
+
+// foxglove_bridge advertises `cdr` as the request encoding for every ROS 2
+// service, so each request is serialized by hand. Field order must match the
+// .srv files in edge/ros2/dobot_cr3_weblab_msgs/srv exactly — CDR is
+// positional, so a reordered field is not an error, it is a wrong number sent
+// to a robot.
+export function encodeRequest(service: string, payload?: unknown): ArrayBuffer {
+  const data = (payload ?? {}) as Record<string, unknown>;
+
+  switch (service) {
+    case SERVICES.jog:
+      // Jog.srv: string axis_id
+      return new CdrWriter().string(String(data.axis_id ?? "")).finish();
+
+    case SERVICES.setSpeed:
+      // SetSpeed.srv: int32 ratio
+      return new CdrWriter().int32(Number(data.ratio ?? 50)).finish();
+
+    case SERVICES.jointMove: {
+      // JointMove.srv: float64[] joints_deg
+      const joints = Array.isArray(data.joints_deg)
+        ? (data.joints_deg as number[]).map(Number)
+        : [];
+      return new CdrWriter().float64Sequence(joints).finish();
+    }
+
+    case SERVICES.cartMove: {
+      // CartMove.srv: float64 x y z rx ry rz
+      const writer = new CdrWriter();
+      for (const axis of ["x", "y", "z", "rx", "ry", "rz"] as const) {
+        writer.float64(Number(data[axis] ?? 0));
+      }
+      return writer.finish();
+    }
+
+    case SERVICES.gripper:
+      // Gripper.srv: float64 position, float64 max_effort
+      return new CdrWriter()
+        .float64(Number(data.position ?? 0))
+        .float64(Number(data.max_effort ?? 50))
+        .finish();
+
+    case SERVICES.programRun:
+      // RunProgram.srv: string name, string steps_json
+      return new CdrWriter()
+        .string(String(data.name ?? ""))
+        .string(JSON.stringify(data.steps ?? []))
+        .finish();
+
+    default:
+      // Everything else is std_srvs/srv/Trigger.
+      return emptyRequest();
+  }
+}
 
 export const JOINT_LABELS = ["J1", "J2", "J3", "J4", "J5", "J6"] as const;
 

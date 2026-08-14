@@ -63,15 +63,18 @@ export interface DeniedEvent {
   callId: number | null;
 }
 
-/** Encode a service-call request frame. */
+/** Encode a service-call request frame carrying an already-serialized body. */
 export function encodeServiceCall(
   serviceId: number,
   callId: number,
-  payload: unknown,
+  requestBody: ArrayBuffer,
 ): ArrayBuffer {
   const encoder = new TextEncoder();
-  const encoding = encoder.encode("json");
-  const body = encoder.encode(JSON.stringify(payload ?? {}));
+  // Not "json": the bridge advertises cdr per service and rejects json with
+  // "Unsupported encoding", which never reaches the robot and never appears
+  // as a failure the user can see.
+  const encoding = encoder.encode("cdr");
+  const body = new Uint8Array(requestBody);
   const buffer = new ArrayBuffer(1 + 12 + encoding.length + body.length);
   const view = new DataView(buffer);
   const bytes = new Uint8Array(buffer);

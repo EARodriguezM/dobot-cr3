@@ -22,7 +22,8 @@ ROS_AVAILABLE = True
 _IMPORT_ERROR = ''
 try:
     from rclpy.action import ActionClient
-    from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+    from rclpy.callback_groups import (
+        MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup)
     from rclpy.node import Node
 
     from control_msgs.action import GripperCommand
@@ -93,9 +94,18 @@ class RobotBridge:
         # time, in order, never interleaved (docs/ros2-node.md).
         self.actuation_group = MutuallyExclusiveCallbackGroup()
 
+        # The driver clients must NOT share that group. A service handler runs
+        # on the actuation group and then blocks waiting for the driver's
+        # reply; if the reply can only be delivered by the same mutually
+        # exclusive group, it waits for a callback that cannot run until it
+        # returns. The result is a deadlock that surfaces to the browser as
+        # "Service failed to send a response" — the command never reaches the
+        # robot and nothing in the log says why.
+        self.client_group = ReentrantCallbackGroup()
+
         def client(kind, name):
             return self.node.create_client(
-                kind, f'{DRIVER_NS}/{name}', callback_group=self.actuation_group)
+                kind, f'{DRIVER_NS}/{name}', callback_group=self.client_group)
 
         self._clients = {
             'enable': client(EnableRobot, 'EnableRobot'),
@@ -108,7 +118,7 @@ class RobotBridge:
         }
         self._gripper = ActionClient(
             self.node, GripperCommand, GRIPPER_ACTION,
-            callback_group=self.actuation_group)
+            callback_group=self.client_group)
 
     def subscribe(self, telemetry_group) -> None:
         """Attach the feedback subscriptions on the reentrant group."""
