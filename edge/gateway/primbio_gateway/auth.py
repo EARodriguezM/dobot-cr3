@@ -67,7 +67,7 @@ class TokenVerifier:
         supabase_url: str,
         project_id: str,
         jwt_secret: str = '',
-        default_role: str = '',
+        default_role: str = 'viewer',
     ):
         self.supabase_url = supabase_url.rstrip('/')
         self.project_id = project_id
@@ -76,7 +76,23 @@ class TokenVerifier:
         # symmetric secret to be present.
         self.jwt_secret = jwt_secret
         # Role granted to an authenticated user who holds no role on this
-        # project. Empty (the default) means "no access": a lab is not public.
+        # project.
+        #
+        # 'viewer' by default because that is what the platform database says:
+        # since migration 0012 every authenticated account is an implicit
+        # viewer of every project, and only *elevation* is granted explicitly
+        # through project_members. Denying by default here contradicted that —
+        # the web app let a signed-in classmate into the console while the
+        # gatekeeper closed their socket 4403 and 401'd the camera list, which
+        # reads as a broken lab rather than as a permission decision.
+        #
+        # It is not a hole: the token must still be signed by this platform's
+        # Supabase project, whose signup trigger admits only institutional
+        # addresses. A viewer may watch and nothing else — every actuation
+        # needs the operator role *and* a live lease (see policy.py).
+        #
+        # A lab that must stay closed sets LAB_DEFAULT_ROLE= (empty) and gets
+        # the old deny-by-default back.
         self.default_role = default_role
         self._jwk_client: Optional[PyJWKClient] = None
         self._jwk_client_at = 0.0

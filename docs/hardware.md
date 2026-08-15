@@ -98,26 +98,40 @@ mkdir -p edge/ros2_ws/src && cp -r edge/ros2/* edge/ros2_ws/src/
 cd edge/ros2_ws && colcon build && source install/setup.bash
 ```
 
-Then the driver, then this node:
+Then the driver, the gripper, then this node:
 
 ```bash
 ros2 launch dobot_cr3_bringup dobot_cr3_bringup.launch.py   # IP_address=…
-ros2 launch dobot_cr3_moveit dobot_cr3_moveit.launch.py     # gripper action
+ros2 run dobot_cr3_moveit gripper_action_server             # gripper action
 ros2 launch dobot_cr3_weblab weblab.launch.py
 ```
 
-## Not yet verified against the robot
+Only one node in `dobot_cr3_moveit` matters here, so it is run directly rather
+than through `dobot_cr3_moveit.launch.py`: that launch file pulls in the whole
+`dobot_cr3_moveit_config` stack — move_group, planners, rviz — none of which a
+remote lab uses. `gripper_action_server` depends on nothing but the bringup's
+Modbus services, and without it `/weblab/gripper` answers "el servidor de la
+pinza no está disponible" while every other control works normally.
 
-Everything above is implemented and unit-tested, but this repository has been
-developed without the CR3 attached. Check these on the first run with hardware:
+The gripper calibrates on startup: it opens and closes once, and refuses goals
+until it reports `DH PGE-50 gripper initialised successfully`.
 
-- `foxglove_bridge` must be started with the `services` capability, and its
-  service-call encoding must be `json` — the web client and the gatekeeper both
-  assume it. If the bridge negotiates `cdr` instead, service calls will fail
-  and the fix belongs in `src/lib/robot/protocol.ts` and the gatekeeper's
-  `_call_service_once`.
-- Topic names `joint_states_robot` and
-  `dobot_cr_msgs/msg/ToolVectorActual` are taken from the reference
-  implementation; confirm they match what the driver publishes.
-- The gripper travel constants (0 open, 0.0142 closed) come from the reference
-  `gripper_action_server`; confirm against the fitted PGE50.
+## Verified against the robot
+
+Confirmed on the bench with the CR3 and a fitted PGE50:
+
+- **Service-call encoding is `cdr`, not `json`.** foxglove_bridge 3.4.1
+  advertises `cdr` per service and answers anything else with "Unsupported
+  encoding"; a Trigger request is the 4-byte encapsulation header plus one
+  placeholder byte, and the header alone comes back as "Service failed to send
+  a response". Both `src/lib/robot/protocol.ts` and the gatekeeper's
+  `_call_service_once` speak CDR. The bridge must still be started with the
+  `services` capability, and it negotiates the `foxglove.sdk.v1` subprotocol.
+- Topic names `joint_states_robot` and `dobot_cr_msgs/msg/ToolVectorActual`
+  match what the driver publishes; telemetry reports `connected: true`.
+- Gripper travel: 0 open, 0.0142 closed, mapped to DH register values
+  1000 → 0. An open command reports `reached=True`.
+- `MoveJog` takes its dynamic parameters unpacked. The driver used to pass the
+  `param_value` list as a single argument, producing `MoveJog(J3+,[])`, which
+  the controller rejects with `-40001` — every jog and every jog-stop failed
+  while reporting success. The accepted form is `MoveJog(J3+)` / `MoveJog()`.

@@ -430,3 +430,46 @@ def test_presence_is_broadcast_to_existing_viewers():
             await bridge.stop()
 
     asyncio.run(scenario())
+
+
+# ── Video: watching is what a viewer is for ─────────────────────────────────
+
+def test_viewer_may_reach_the_cameras_and_anonymous_may_not():
+    """The camera list and the streams behind it are open to any signed-in role.
+
+    A spectator who cannot see the cameras cannot spectate, and since the web
+    UI builds its wall from whatever /api/video/api/streams reports, refusing a
+    viewer here empties the wall rather than hiding one control. Only *driving*
+    is privileged.
+
+    go2rtc is not running in this harness, so an authorized request fails
+    upstream with 502. That is the point: anything other than 401 means the
+    gatekeeper let it through to the camera server.
+    """
+    async def scenario():
+        bridge = FakeBridge()
+        await bridge.start()
+        harness = GatewayHarness(bridge, {'view-token': VIEWER})
+        await harness.start()
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = harness.url('/api/video/api/streams')
+
+                async with session.get(url) as anonymous:
+                    assert anonymous.status == 401
+
+                async with session.get(
+                    url, headers={'Authorization': 'Bearer view-token'}
+                ) as viewer:
+                    assert viewer.status != 401
+                    assert viewer.status == 502
+
+                # The MSE fallback cannot set headers on a WebSocket upgrade,
+                # so the same token has to work as a query parameter.
+                async with session.get(f'{url}?access_token=view-token') as query:
+                    assert query.status != 401
+        finally:
+            await harness.stop()
+            await bridge.stop()
+
+    asyncio.run(scenario())

@@ -2,11 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getLabContext } from "@/lib/lab";
-import { DEFAULT_LAYOUT, type WallLayout } from "@/lib/camera-layout";
 
-// Durable, shared lab state: teach-pendant programs and the camera-wall
-// arrangement, stored in the platform's `lab_settings` table (hub migration
-// 0011) keyed by this lab's id.
+// Durable, shared lab state: teach-pendant programs, stored in the platform's
+// `lab_settings` table (hub migration 0011) keyed by this lab's id.
 //
 // Shared is the point. The obvious alternative was localStorage, and it is
 // wrong here for the same reason the lab itself is shared: a routine a student
@@ -32,7 +30,6 @@ export interface Program {
 }
 
 const PROGRAMS_KEY = "programs";
-const CAMERA_LAYOUT_KEY = "camera_layout";
 
 async function readSetting<T>(key: string, fallback: T): Promise<T> {
   const ctx = await getLabContext();
@@ -86,18 +83,7 @@ export async function savePrograms(programs: Program[]): Promise<boolean> {
   return writeSetting(PROGRAMS_KEY, { items: programs });
 }
 
-export async function loadCameraLayout(
-  fallback: WallLayout,
-): Promise<WallLayout> {
-  const stored = await readSetting<Partial<WallLayout>>(CAMERA_LAYOUT_KEY, {});
-  const base = fallback ?? DEFAULT_LAYOUT;
-  return {
-    count: typeof stored.count === "number" ? stored.count : base.count,
-    preset: typeof stored.preset === "string" ? stored.preset : base.preset,
-    slots: Array.isArray(stored.slots) ? stored.slots : base.slots,
-  };
-}
-
-export async function saveCameraLayout(layout: WallLayout): Promise<boolean> {
-  return writeSetting(CAMERA_LAYOUT_KEY, layout);
-}
+// The camera wall used to store an arrangement here (`camera_layout`). It
+// builds itself from what go2rtc reports now, and which cameras you hide is a
+// per-browser preference rather than lab-wide state, so nothing about video
+// belongs in this table any more. Old rows are harmless and left alone.

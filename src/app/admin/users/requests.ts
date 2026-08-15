@@ -29,7 +29,19 @@ export async function requestPromotionAction(): Promise<ActionResult> {
     p_project_id: ctx.projectId,
     p_note: null,
   });
-  if (error) return { ok: false, code: "reqerr" };
+
+  if (error) {
+    // Logged, not shown: the UI says "no se pudo enviar" in Spanish, and this
+    // is the only place the Postgres reason survives.
+    console.error(
+      "[roles] request_role_promotion failed for %s on %s: %s %s",
+      ctx.user.id,
+      ctx.projectId,
+      error.code ?? "?",
+      error.message,
+    );
+    return { ok: false, code: "reqerr" };
+  }
 
   revalidatePath("/admin/users");
   return { ok: true, code: "requested" };

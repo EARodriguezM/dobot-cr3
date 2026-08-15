@@ -51,7 +51,7 @@ what says whether the arm actually moved.
 | `SUPABASE_JWT_SECRET` | only for legacy projects | HS256 fallback when the project has no JWKS |
 | `FOXGLOVE_BRIDGE_URL` | no | default `ws://127.0.0.1:8765` |
 | `GATEWAY_HOST` / `GATEWAY_PORT` | no | default `127.0.0.1:8766` — bind to localhost and let `cloudflared` be the only ingress |
-| `LAB_DEFAULT_ROLE` | no | role for an authenticated user with none on this project. Empty (default) means no access |
+| `LAB_DEFAULT_ROLE` | no | role for an authenticated user holding none on this project. Default `viewer`, matching the platform rule that every account is an implicit viewer of every project (migration 0012); set it empty to close the lab to everyone without an explicit role |
 
 ## Running
 

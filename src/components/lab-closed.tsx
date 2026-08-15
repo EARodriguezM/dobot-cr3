@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { LabClosure } from "@/lib/lab";
+import { hubUrl, type LabClosure } from "@/lib/lab";
 import { buttonClass } from "./ui";
 
 // What an ordinary user sees when the lab is not open to them.
@@ -52,7 +52,7 @@ export function LabClosed({
         {body}
       </p>
       <Link
-        href="https://primbiolab.org/dashboard"
+        href={hubUrl("/dashboard")}
         className={buttonClass({ variant: "quiet", size: "lg", className: "mt-8" })}
       >
         Volver al panel

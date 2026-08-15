@@ -706,7 +706,10 @@ class Config:
                 'GO2RTC_URL', 'http://127.0.0.1:1984').rstrip('/'),
             host=os.environ.get('GATEWAY_HOST', '127.0.0.1'),
             port=int(os.environ.get('GATEWAY_PORT', '8766')),
-            default_role=os.environ.get('LAB_DEFAULT_ROLE', ''),
+            # Matches the platform rule that every authenticated account is a
+            # viewer of every project; set it empty to close the lab to
+            # everyone who holds no explicit role (see auth.TokenVerifier).
+            default_role=os.environ.get('LAB_DEFAULT_ROLE', 'viewer'),
         )
 
 

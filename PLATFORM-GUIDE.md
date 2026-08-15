@@ -1,6 +1,6 @@
 # PRIMBIO Platform Guide — the shared contract
 
-> **Version: 2026-08.2** (bump on every edit).
+> **Version: 2026-08.3** (bump on every edit).
 > **Canonical copy:** the hub repository (`hub/PLATFORM-GUIDE.md`). Every lab
 > repository carries an identical copy at its root. Changes are made in the hub
 > repo first and copied verbatim to every lab repo in the same change — a lab
@@ -73,10 +73,17 @@ the control hostname is `<slug>-control.primbiolab.org` — never
 All schema lives in `hub/supabase/migrations/` — sequential, append-only,
 **labs never run migrations**. Core tables every app relies on:
 
-- `profiles` — mirror of `auth.users`, provisioned on first login.
+- `profiles` — mirror of `auth.users`, provisioned by a trigger on signup
+  (migration 0013). No app creates it: a callback writing it from the browser
+  session lands as `anon` and fails silently. Apps may refresh their own row.
 - `projects` — metadata, status, `owner_id` (exactly one owner per project).
 - `project_members` — `(project_id, user_id, role)`,
   `role ∈ owner | admin | operator | viewer`; dynamic number of admins.
+  Only *elevation* is stored here: since migration 0012 every authenticated
+  account is an implicit **viewer** of every project, so an absent row means
+  viewer, not "no access". Edge services must default to the same (the
+  gatekeeper's `LAB_DEFAULT_ROLE`), or a lab will admit someone in its UI and
+  reject them at the socket.
 - `remote_labs` — hardware endpoints + tunnel config, FK → `projects`.
 
 **RLS is the authorization gate** in every app; UI checks are cosmetic. A

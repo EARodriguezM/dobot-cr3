@@ -11,7 +11,6 @@ import { SessionPanel } from "./session-panel";
 import { TelemetryReadout } from "./telemetry-readout";
 import { useControl } from "@/lib/control/use-control";
 import { useRobot } from "@/lib/robot/use-robot";
-import type { WallLayout } from "@/lib/camera-layout";
 import type { Program } from "@/lib/lab-settings";
 import type { ActionResult } from "@/lib/action-result";
 import { Banner, TabStrip } from "./ui";
@@ -94,10 +93,9 @@ export function LabConsole({
   canOperate,
   canAdmin,
   configured,
+  labSlug,
   initialPrograms,
-  initialLayout,
   savePrograms,
-  saveLayout,
   requestPromotion,
 }: {
   controlUrl: string | null;
@@ -108,15 +106,13 @@ export function LabConsole({
   canOperate: boolean;
   canAdmin: boolean;
   configured: boolean;
+  labSlug: string;
   initialPrograms: Program[];
-  initialLayout: WallLayout;
   savePrograms: (programs: Program[]) => Promise<boolean>;
-  saveLayout: (layout: WallLayout) => Promise<boolean>;
   requestPromotion?: (previous: ActionResult | null) => Promise<ActionResult>;
 }) {
   const [stage, setStage] = useState<Stage>("cameras");
   const [programs, setPrograms] = useState<Program[]>(initialPrograms);
-  const [layout, setLayout] = useState<WallLayout>(initialLayout);
   const [units, setUnits] = useState<"deg" | "rad">("deg");
 
   const control = useControl(userId);
@@ -135,14 +131,6 @@ export function LabConsole({
       void savePrograms(next);
     },
     [savePrograms],
-  );
-
-  const persistLayout = useCallback(
-    (next: WallLayout) => {
-      setLayout(next);
-      void saveLayout(next);
-    },
-    [saveLayout],
   );
 
   // Surface a refusal from the edge briefly, then let it go: it is feedback on
@@ -263,12 +251,7 @@ export function LabConsole({
 
             <div className="flex min-h-64 flex-col xl:min-h-[28rem]">
               <Stage active={stage === "cameras"}>
-                <CameraWall
-                  controlUrl={controlUrl}
-                  layout={layout}
-                  canEdit={canOperate}
-                  onLayoutChange={persistLayout}
-                />
+                <CameraWall controlUrl={controlUrl} labSlug={labSlug} />
               </Stage>
 
               {modelMounted ? (

@@ -2,16 +2,9 @@ import Link from "next/link";
 import { LabClosed } from "@/components/lab-closed";
 import { Banner } from "@/components/ui";
 import { requestPromotionAction } from "./admin/users/requests";
-import { DEFAULT_LAYOUT, type WallLayout } from "@/lib/camera-layout";
 import { LabConsole } from "@/components/lab-console";
 import { getControlUrl, getLabContext, getLabSlug } from "@/lib/lab";
-import {
-  loadCameraLayout,
-  loadPrograms,
-  saveCameraLayout,
-  savePrograms,
-  type Program,
-} from "@/lib/lab-settings";
+import { loadPrograms, savePrograms, type Program } from "@/lib/lab-settings";
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "Propietario",
@@ -30,12 +23,10 @@ export default async function LabPage() {
   }
 
   // Shared state is loaded server-side so the first paint already has the
-  // lab's programs and camera arrangement; both fall back to empty when
-  // Supabase is unconfigured, which is what keeps the demo mode working.
-  const [programs, layout] = await Promise.all([
-    loadPrograms().catch((): Program[] => []),
-    loadCameraLayout(DEFAULT_LAYOUT).catch((): WallLayout => DEFAULT_LAYOUT),
-  ]);
+  // lab's programs; it falls back to empty when Supabase is unconfigured,
+  // which is what keeps the demo mode working. The camera wall needs nothing
+  // here — it discovers what the lab computer is publishing.
+  const programs = await loadPrograms().catch((): Program[] => []);
 
   return (
     <>
@@ -68,10 +59,9 @@ export default async function LabPage() {
         canOperate={ctx.configured ? ctx.canOperate : true}
         canAdmin={ctx.configured ? ctx.canAdmin : true}
         configured={ctx.configured}
+        labSlug={getLabSlug()}
         initialPrograms={programs}
-        initialLayout={layout}
         savePrograms={savePrograms}
-        saveLayout={saveCameraLayout}
         requestPromotion={
           ctx.configured && ctx.role === "viewer" ? requestPromotionAction : undefined
         }

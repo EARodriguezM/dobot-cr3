@@ -15,6 +15,23 @@ export function getControlUrl(): string | null {
   return process.env.NEXT_PUBLIC_CONTROL_URL || null;
 }
 
+/** The platform hub. A lab is one room of it, never the way out of it. */
+export const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL || "https://primbiolab.org";
+
+/**
+ * Absolute URL on the hub.
+ *
+ * Falls back to the public hub if the configured value is not a URL: a typo in
+ * an environment variable must not turn signing out into a 500.
+ */
+export function hubUrl(path = "/"): string {
+  try {
+    return new URL(path, HUB_URL).toString();
+  } catch {
+    return new URL(path, "https://primbiolab.org").toString();
+  }
+}
+
 // The caller's raw Supabase access token, for the one case where this app
 // speaks to the edge on the user's behalf (the server-side e-stop). The
 // gatekeeper verifies it and re-checks the role itself, so this app is never

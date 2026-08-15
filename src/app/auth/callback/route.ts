@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isAllowedEmail } from "@/lib/supabase/env";
+import { ensureProfile } from "@/lib/profile";
 
 // Same contract as the hub's callback: PKCE exchange, institutional-domain
 // re-check (the DB trigger is the authoritative gate) and profile upsert, so
@@ -33,14 +34,14 @@ export async function GET(request: Request) {
     return loginWithError("domain");
   }
 
-  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-  await supabase.from("profiles").upsert({
-    id: user.id,
-    email: user.email,
-    full_name: typeof meta.full_name === "string" ? meta.full_name : null,
-    avatar_url: typeof meta.avatar_url === "string" ? meta.avatar_url : null,
-    updated_at: new Date().toISOString(),
-  });
+  // Best effort, and not the thing that creates the row — a trigger on
+  // auth.users does that since hub migration 0013 (see lib/profile.ts). Sign-in
+  // continues either way; a warning is enough, because the account is complete
+  // without this write succeeding.
+  const failure = await ensureProfile(supabase, user);
+  if (failure) {
+    console.warn("[auth] profile refresh skipped for %s: %s", user.id, failure);
+  }
 
   return NextResponse.redirect(new URL(safeNext, url.origin));
 }
