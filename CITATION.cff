@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "Dobot CR3 PRIMBIO remote lab: web teleoperation of a collaborative robot arm"
+abstract: "Web interface for remote teleoperation of a Dobot CR3 collaborative robot arm. One authenticated operator holds a control lease while any number of viewers follow the same live video, telemetry, 3D pose and command feed. Includes the Cloudflare Worker front end, the lease and presence API, and the edge software (JWT-verifying WebSocket gatekeeper and WebRTC video fan-out) that runs on the lab computer next to the ROS 2 control stack. Developed in the PRIMBIO research seedbed, Grupo de Investigación IAM-NANO, Universidad Nacional de Colombia, Sede de La Paz."
+authors:
+  - family-names: "Rodríguez Meléndez"
+    given-names: "Esteban Andrés"
+    affiliation: "Universidad Nacional de Colombia, Sede de La Paz"
+repository-code: "https://github.com/EARodriguezM/dobot-cr3"
+version: "v1.0.0"
+date-released: "2026-10-31"
+keywords:
+  - "remote laboratory"
+  - "teleoperation"
+  - "Dobot CR3"
+  - "collaborative robot"
+  - "ROS 2"
+  - "WebRTC"
+  - "robotics education"
