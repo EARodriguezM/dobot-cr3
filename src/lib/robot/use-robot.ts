@@ -48,6 +48,26 @@ interface TelemetryDocument {
   joints_rad?: number[];
   pose?: Partial<Pose>;
   program?: Partial<ProgramStatus>;
+  supervision?: Partial<Supervision>;
+}
+
+/**
+ * Whether the arm's current state is one this platform asked for.
+ *
+ * The robot's own TCP protocol has no authentication, so anything that can
+ * reach the controller can energise and drive it without a session, a role or
+ * the control lease. The node cannot prevent that; it compares the robot's real
+ * mode against what it commanded and says so here when they disagree. The
+ * console's job is to make sure a person sees it.
+ */
+export interface Supervision {
+  /** Vendor robot mode, or null before the robot has answered once. */
+  mode: number | null;
+  modeLabel: string;
+  /** False while the arm is energised and this platform did not do it. */
+  attributed: boolean;
+  /** Unix seconds when that started, or null. */
+  since: number | null;
 }
 
 export interface Telemetry {
@@ -59,6 +79,7 @@ export interface Telemetry {
   jointsRad: number[];
   pose: Pose;
   program: ProgramStatus;
+  supervision: Supervision;
 }
 
 const EMPTY_TELEMETRY: Telemetry = {
@@ -76,6 +97,9 @@ const EMPTY_TELEMETRY: Telemetry = {
     programName: "",
     operatorName: "",
   },
+  // Attributed until the robot says otherwise: an unread telemetry document is
+  // not evidence that somebody is driving the arm.
+  supervision: { mode: null, modeLabel: "", attributed: true, since: null },
 };
 
 const TELEMETRY_TOPIC = "/weblab/telemetry";
@@ -107,7 +131,10 @@ function sameTelemetry(a: Telemetry, b: Telemetry): boolean {
     a.program.stepIndex === b.program.stepIndex &&
     a.program.stepCount === b.program.stepCount &&
     a.program.programName === b.program.programName &&
-    a.program.operatorName === b.program.operatorName
+    a.program.operatorName === b.program.operatorName &&
+    a.supervision.attributed === b.supervision.attributed &&
+    a.supervision.mode === b.supervision.mode &&
+    a.supervision.since === b.supervision.since
   );
 }
 
@@ -404,6 +431,7 @@ export function useRobot(
           jointsRad: document.joints_rad ?? prev.jointsRad,
           pose: { ...prev.pose, ...(document.pose ?? {}) },
           program: { ...prev.program, ...(document.program ?? {}) },
+          supervision: { ...prev.supervision, ...(document.supervision ?? {}) },
         };
         // The node publishes at a fixed rate whether or not anything moved. A
         // stationary arm would otherwise hand React a new object several times

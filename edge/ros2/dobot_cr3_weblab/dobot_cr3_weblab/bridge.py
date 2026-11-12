@@ -38,6 +38,17 @@ except Exception as exc:  # pragma: no cover - depends on the ROS environment
     ROS_AVAILABLE = False
     _IMPORT_ERROR = repr(exc)
 
+# Imported on its own so a driver that predates this service costs only the
+# supervision check. Folding it into the block above would make the whole node
+# degrade to telemetry-only over one missing symbol, which is a much worse
+# trade than losing the alarm.
+MODE_QUERY_AVAILABLE = False
+try:
+    from dobot_cr_msgs.srv import RobotMode
+    MODE_QUERY_AVAILABLE = True
+except Exception:  # pragma: no cover - depends on the driver version
+    pass
+
 NUM_JOINTS = 6
 
 # Gripper finger travel understood by the PGE50 action server, in metres.
@@ -47,6 +58,42 @@ GRIPPER_CLOSED = 0.0142
 # A feedback gap longer than this means the driver has stopped talking to us,
 # whatever the last message said.
 STALE_FEEDBACK_S = 1.5
+
+# ── Knowing what the robot is actually doing ────────────────────────────────
+#
+# The vendor's TCP protocol has no authentication. Anything that can reach the
+# controller on port 29999 can enable and move this arm without touching the
+# platform: no session, no role, no lease, no gatekeeper. That is a property of
+# the robot's firmware and cannot be fixed from here — the fix is to make the
+# controller unreachable to anything but this computer (docs/robot-network.md).
+#
+# What this process *can* do is stop being the last to know. `enabled` used to
+# be set from our own commands and never read back, so a command issued outside
+# the platform was invisible: the console kept drawing a disabled arm while it
+# moved. So the robot is asked instead, and when its answer does not match what
+# we asked for, the telemetry says so to everyone watching.
+
+# The vendor's robot modes.
+MODE_LABELS = {
+    1: 'init', 2: 'brakes released', 3: 'unknown', 4: 'disabled',
+    5: 'enabled', 6: 'backdrive', 7: 'running program', 8: 'recording',
+    9: 'error', 10: 'paused', 11: 'jogging',
+}
+
+# Modes in which the brakes are engaged and the arm cannot move on its own.
+# Anything else — including a mode this table does not know — is treated as
+# energised, so an unrecognised vendor mode raises the alarm rather than
+# silencing it.
+IDLE_MODES = frozenset({1, 4, 9})
+
+# How long after one of our own commands to stop comparing. A command takes a
+# moment to change the robot's mode, and the mismatch in between is ours.
+COMMAND_GRACE_S = 3.0
+
+# The mode query is a dashboard round trip; it must never hold up actuation, so
+# it runs on the telemetry group with a short deadline and skips itself if the
+# previous one is still outstanding.
+MODE_POLL_TIMEOUT_S = 1.0
 
 DRIVER_NS = '/dobot_cr3_bringup/srv'
 GRIPPER_ACTION = '/gripper_group_controller/gripper_cmd'
@@ -70,6 +117,14 @@ class RobotBridge:
         self._state: Dict[str, Any] = {
             'connected': False,
             'enabled': None,
+            # Null until the robot has answered once: "we do not know" is a
+            # different statement from "nobody is driving it".
+            'supervision': {
+                'mode': None,
+                'modeLabel': '',
+                'attributed': True,
+                'since': None,
+            },
             'speed': 50,
             'error': '' if ROS_AVAILABLE else 'ROS no disponible',
             'joints_deg': [0.0] * NUM_JOINTS,
@@ -78,6 +133,11 @@ class RobotBridge:
                      'rx': 0.0, 'ry': 0.0, 'rz': 0.0},
         }
         self._last_feedback = 0.0
+        # Attribution: what we asked for, and when we last asked for anything.
+        self._commanded_motion = False
+        self._last_command_at = 0.0
+        self._mode_seen = False
+        self._mode_in_flight = False
         self._clients: Dict[str, Any] = {}
         self._gripper: Optional[Any] = None
         if ROS_AVAILABLE:
@@ -116,6 +176,8 @@ class RobotBridge:
             'joint_move': client(JointMovJ, 'JointMovJ'),
             'cart_move': client(MovJ, 'MovJ'),
         }
+        if MODE_QUERY_AVAILABLE:
+            self._clients['mode'] = client(RobotMode, 'RobotMode')
         self._gripper = ActionClient(
             self.node, GripperCommand, GRIPPER_ACTION,
             callback_group=self.client_group)
@@ -150,10 +212,114 @@ class RobotBridge:
             self._state['connected'] = True
         self._last_feedback = time.time()
 
+    def poll_mode(self) -> Optional[str]:
+        """Ask the robot what it is actually doing and reconcile it with what
+        we asked for. Returns a message to log when the verdict changes.
+
+        This is the only thing standing between an unauthenticated command on
+        the vendor's TCP port and nobody noticing. It cannot prevent that
+        command — the robot is the listener and an unauthorised client never
+        passes through this process — but it does mean the arm cannot be
+        energised without the console saying so to every person watching.
+
+        Deliberately never acts on what it finds. Disabling the arm here would
+        also disable it under an engineer legitimately using the teach pendant,
+        possibly mid-move, which trades an intruder for a hazard. The report
+        goes to the people who can look at the robot and decide.
+        """
+        if not ROS_AVAILABLE or not MODE_QUERY_AVAILABLE:
+            return None
+        client = self._clients.get('mode')
+        if client is None or self._mode_in_flight:
+            return None
+        # Never wait on the driver here: if it is not up, telemetry already
+        # says disconnected and there is nothing to reconcile against.
+        if not client.service_is_ready():
+            return None
+
+        self._mode_in_flight = True
+        try:
+            future = client.call_async(RobotMode.Request())
+            deadline = time.time() + MODE_POLL_TIMEOUT_S
+            while not future.done() and time.time() < deadline:
+                time.sleep(0.01)
+            if not future.done():
+                return None
+            response = future.result()
+            if response is None or int(getattr(response, 'res', 0) or 0) != 0:
+                return None
+            raw = str(getattr(response, 'mode', '') or '').strip()
+            if not raw.lstrip('-').isdigit():
+                return None
+            mode = int(raw)
+        except Exception:
+            # A failed query is not evidence of anything; the next one decides.
+            return None
+        finally:
+            self._mode_in_flight = False
+
+        return self._reconcile(mode)
+
+    def _reconcile(self, mode: int) -> Optional[str]:
+        """Fold one mode reading into the state. Returns a line to log when the
+        attribution verdict changes, so a steady state is not logged forever."""
+        now = time.time()
+        energised = mode not in IDLE_MODES
+        label = MODE_LABELS.get(mode, f'mode {mode}')
+
+        with self._lock:
+            # The robot's own answer outranks what we assumed from our own
+            # commands. This is the field the console draws.
+            self._state['enabled'] = energised
+
+            previous = self._state['supervision']
+            was_attributed = previous['attributed']
+            first_reading = not self._mode_seen
+            self._mode_seen = True
+
+            # Ours if we asked for it, or if we asked for anything at all in
+            # the last few seconds and the robot is still catching up.
+            attributed = (
+                not energised
+                or self._commanded_motion
+                or now - self._last_command_at < COMMAND_GRACE_S
+            )
+            if attributed:
+                # Believing the robot keeps the two views from drifting apart
+                # after a stop the platform did not issue.
+                self._commanded_motion = energised
+                since = None
+            else:
+                since = previous['since'] or now
+
+            self._state['supervision'] = {
+                'mode': mode,
+                'modeLabel': label,
+                'attributed': attributed,
+                'since': since,
+            }
+
+        if attributed:
+            if not was_attributed:
+                return f'robot state is accounted for again ({label})'
+            return None
+
+        if was_attributed or first_reading:
+            when = 'was already' if first_reading else 'has been'
+            return (
+                f'UNATTRIBUTED ROBOT STATE: the arm {when} {label} and this '
+                'platform did not command it. The vendor TCP protocol is '
+                'unauthenticated, so anything that can reach the controller '
+                'can do this. Check who is at the robot, and see '
+                'docs/robot-network.md.'
+            )
+        return None
+
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
             state = dict(self._state)
             state['pose'] = dict(state['pose'])
+            state['supervision'] = dict(state['supervision'])
             state['joints_deg'] = list(state['joints_deg'])
             state['joints_rad'] = list(state['joints_rad'])
         if state['connected'] and time.time() - self._last_feedback > STALE_FEEDBACK_S:
@@ -165,6 +331,9 @@ class RobotBridge:
     def _call(self, key: str, request) -> Dict[str, Any]:
         if not ROS_AVAILABLE:
             return _fail('ROS no disponible (modo sin hardware)')
+        # Every command the platform issues passes through here, which makes it
+        # the one place to record that whatever the robot does next is ours.
+        self._last_command_at = time.time()
         client = self._clients.get(key)
         if client is None:
             return _fail(f'servicio desconocido: {key}')
@@ -199,6 +368,7 @@ class RobotBridge:
         if result['ok']:
             with self._lock:
                 self._state['enabled'] = True
+                self._commanded_motion = True
         return result
 
     def disable(self) -> Dict[str, Any]:
@@ -208,6 +378,7 @@ class RobotBridge:
         if result['ok']:
             with self._lock:
                 self._state['enabled'] = False
+                self._commanded_motion = False
         return result
 
     def clear_error(self) -> Dict[str, Any]:
@@ -267,6 +438,7 @@ class RobotBridge:
         if self._gripper is None or not self._gripper.wait_for_server(
                 timeout_sec=self.service_timeout):
             return _fail('el servidor de la pinza no está disponible')
+        self._last_command_at = time.time()
         goal = GripperCommand.Goal()
         goal.command.position = float(position)
         goal.command.max_effort = float(max_effort)

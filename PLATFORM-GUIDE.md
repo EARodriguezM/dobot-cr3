@@ -1,6 +1,6 @@
 # PRIMBIO Platform Guide — the shared contract
 
-> **Version: 2026-08.3** (bump on every edit).
+> **Version: 2026-08.4** (bump on every edit).
 > **Canonical copy:** the hub repository (`hub/PLATFORM-GUIDE.md`). Every lab
 > repository carries an identical copy at its root. Changes are made in the hub
 > repo first and copied verbatim to every lab repo in the same change — a lab
@@ -92,11 +92,26 @@ from the lab's own admin UI. Never bypass a policy with the service-role key.
 
 ### 2.3 Concurrency model (every lab implements it)
 
-- **N concurrent viewers, one active controller.** Control is a Redis lease:
-  `SET NX` with a 15 s TTL, extended by client heartbeats. Crash or
-  disconnect ⇒ lease expires ⇒ next user in the queue takes control.
-- Spectators are fed via Redis Pub/Sub: the edge device publishes telemetry
-  **once**, the server fans it out.
+- **N concurrent viewers, one active controller.** Control is a lease with a
+  15 s TTL, extended by client heartbeats. Crash or disconnect ⇒ lease expires
+  ⇒ next user in the queue takes control.
+- **The lease must live in a store every instance of the app can see.** This is
+  the contract, not the storage technology: a Durable Object where the lab runs
+  on Cloudflare Workers, Redis where it runs as a long-lived server. An
+  in-process store is for `next dev` and tests only.
+  *Why this is spelled out (2026-08.4):* a lab deployed to Workers on the
+  in-process fallback. `globalThis` is per isolate there, so each isolate saw a
+  free lease and granted it — an operator and the project owner drove the same
+  arm at once, each correctly told they were in control. The semantics were
+  right; the state was not shared. A store that cannot speak for the whole lab
+  does not enforce one controller, it enforces one per instance.
+- **A lease may only become a hardware credential if the store is shared.** Any
+  lab that mints a signed token for its edge must refuse to mint one from an
+  unshared store on a multi-instance runtime. That lab is view-only, which is
+  recoverable; the alternative moves hardware for two people at once.
+- Spectators are fed by fan-out from the store — Pub/Sub where the store has
+  it, polling where it does not: the edge device publishes telemetry **once**
+  and the server fans it out.
 - A presence list shows who is connected and who is driving.
 - **Emergency stop never requires the lease** — any operator can stop the
   hardware at any time. Do not "fix" this.
@@ -155,7 +170,7 @@ UI copy is Spanish; code, comments and docs are English.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | both | public anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only | never in a browser bundle |
 | `NEXT_PUBLIC_AUTH_COOKIE_DOMAIN` | both, prod only | `.primbiolab.org`; unset in dev |
-| `REDIS_URL` | lab server | control lease + pub/sub |
+| `REDIS_URL` | lab server | control lease + pub/sub, when the lease store is Redis. On Cloudflare Workers the lease lives in a Durable Object binding instead and this is unset (§2.3) |
 
 Every app must build and boot with all of these unset (public pages work,
 protected routes bounce to login, lab UI goes view-only).
