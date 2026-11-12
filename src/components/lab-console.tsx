@@ -228,6 +228,22 @@ export function LabConsole({
           <Banner tone={connection.tone}>{connection.message}</Banner>
         ) : null}
 
+        {/* The arm is energised and this platform did not do it. The robot's
+            own TCP protocol takes no credentials, so a command can arrive
+            without a session, a role or the control lease — the node compares
+            the robot's real mode against what it commanded, and this is where
+            a person finds out. Shown to everyone, not just operators: the
+            point is that somebody looks at the robot. */}
+        {robot.telemetry.supervision.attributed ? null : (
+          <Banner tone="danger" role="alert">
+            ⚠ El brazo está {robot.telemetry.supervision.modeLabel
+              ? `en estado «${robot.telemetry.supervision.modeLabel}»`
+              : "activo"}{" "}
+            y no fue esta plataforma quien lo activó. Puede haber alguien
+            operándolo directamente. Verifique el robot antes de continuar.
+          </Banner>
+        )}
+
         {robot.lastDenial ? (
           <Banner tone="warn" role="status">
             {robot.lastDenial}

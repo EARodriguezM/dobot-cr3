@@ -16,6 +16,15 @@ Nothing under `/dobot_cr3_bringup` is reachable from a browser. The weblab node
 allowlists that front by name — so widening what the web can do takes an
 explicit edit in two files, both of which are reviewed as security surface.
 
+That chain guards the path drawn above, and only that path. The last arrow —
+driver to controller — is the vendor's own TCP protocol, which takes no
+credentials at all, so any host that can reach the controller's ports can
+command the arm without appearing anywhere in this diagram. Making that
+unreachable is a network job, not a software one:
+**[robot-network.md](robot-network.md)**. The node reports the arm reaching a
+state it did not command (`supervision` in the telemetry below), which is
+detection, not prevention.
+
 ## The service surface
 
 | Service | Type | Needs the lease? |
@@ -52,9 +61,19 @@ what the mechanism will accept.
   "joints_deg": [0,0,0,0,0,0], "joints_rad": [0,0,0,0,0,0],
   "pose": {"x":0,"y":0,"z":0,"rx":0,"ry":0,"rz":0},
   "program": {"running": false, "stepIndex": -1, "stepCount": 0,
-              "programName": "", "operatorName": ""}
+              "programName": "", "operatorName": ""},
+  "supervision": {"mode": 4, "modeLabel": "disabled",
+                  "attributed": true, "since": null}
 }
 ```
+
+`enabled` is the robot's own answer, polled once a second from
+`/dobot_cr3_bringup/srv/RobotMode` — not an assumption from the last command
+this platform sent. `supervision.attributed` is false while the arm is
+energised and the platform did not energise it, which is what an unauthenticated
+command on the vendor's TCP port looks like from in here; every console shows a
+red banner while it is false. See [robot-network.md](robot-network.md) for why
+that is detection rather than prevention.
 
 Published **once** and fanned out by `foxglove_bridge` to every viewer. The
 driver's typed topics (`joint_states_robot`,

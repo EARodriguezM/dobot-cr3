@@ -87,7 +87,11 @@ consequences worth being deliberate about:
   no authentication in the Dobot TCP/IP protocol at all. The platform's
   gatekeeper protects the *web* path, not this one. For anything beyond bench
   testing, put the robot behind a second NIC on its own subnet so the lab
-  computer is the only machine that can talk to it.
+  computer is the only machine that can talk to it —
+  **[robot-network.md](robot-network.md)** has the three ways to do that, the
+  configs, and a script that checks the result from both sides. Until one of
+  them is in place the arm is commandable by every host on the campus network,
+  and the platform can only tell you after the fact.
 - Its address comes from the campus DHCP server, so it can change. Either
   reserve it, or re-run the fingerprint scan when the robot moves.
 

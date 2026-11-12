@@ -52,6 +52,13 @@ TELEMETRY_HZ = 10.0
 # already safe by the time the lease expires.
 JOG_WATCHDOG_S = 1.0
 
+# How often to ask the robot what it is actually doing, rather than assuming it
+# is doing what we asked. This is what makes a command issued outside the
+# platform — over the vendor's unauthenticated TCP port, which needs no session
+# and no lease — visible instead of silent. One second is far below any useful
+# duty cycle for an arm and costs one dashboard round trip.
+MODE_POLL_S = 1.0
+
 
 class WeblabNode(Node):
     def __init__(self):
@@ -75,6 +82,8 @@ class WeblabNode(Node):
             callback_group=self.telemetry_group)
         self.create_timer(
             0.2, self._watchdog, callback_group=self.telemetry_group)
+        self.create_timer(
+            MODE_POLL_S, self._poll_mode, callback_group=self.telemetry_group)
 
         self._declare_services()
 
@@ -190,6 +199,19 @@ class WeblabNode(Node):
             response, self.runner.start(request.name, request.steps_json))
 
     # ── Periodic ────────────────────────────────────────────────────────────
+
+    def _poll_mode(self) -> None:
+        """Reconcile the robot's real state with what we commanded.
+
+        Runs on the telemetry group so it can never delay a command, and the
+        bridge drops the query rather than queueing if the previous one has not
+        come back. It reports; it never acts. Stopping the arm on a mismatch
+        would also stop it under someone legitimately using the teach pendant,
+        which is a worse outcome than an alarm nobody has read yet.
+        """
+        message = self.bridge.poll_mode()
+        if message:
+            self.get_logger().warn(message)
 
     def _publish_telemetry(self) -> None:
         state = self.bridge.snapshot()
